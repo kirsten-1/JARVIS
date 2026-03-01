@@ -4,7 +4,7 @@
 
 ## 文档导航
 
-- `docs/项目完整规划与里程碑.md`：M1-M11 完整规划与当前状态
+- `docs/项目完整规划与里程碑.md`：M1-M12 完整规划与当前状态
 - `docs/M1-工程骨架交付说明.md`：M1 详细交付内容
 - `docs/M3-网关基础能力交付说明.md`：M3 详细交付内容
 - `docs/M4-AI调用层交付说明.md`：M4 详细交付内容
@@ -18,6 +18,7 @@
 - `docs/M9-组织权限与计费观测增强规划.md`：组织权限、真实计费、运营看板规划
 - `docs/M10-容器化与CI交付说明.md`：Docker/Compose 本地一键启动与 GitHub Actions CI 交付
 - `docs/M11-部署与发布交付说明.md`：生产部署、镜像发布、回滚与运行手册
+- `docs/M12-可观测与运维加固交付说明.md`：Prometheus/Grafana 观测栈与运维脚本
 - `docs/多厂商AI使用指南.md`：多厂商接入与路由使用指南
 - `docs/产品不足与增强路线.md`：当前产品不足与可增强路线
 - `docs/启动问题排查记录.md`：启动问题排查沉淀
@@ -68,6 +69,7 @@
 | M9 | 组织权限 + 真实计费 + 运营看板 | 2 天 | `completed` |
 | M10 | 生产交付（容器化 + CI） | 1 天 | `completed` |
 | M11 | 部署与发布（prod 编排 + 镜像发布 + 运行手册） | 1 天 | `completed` |
+| M12 | 可观测与运维加固（Prometheus + Grafana） | 1 天 | `completed` |
 
 ## M1 验收清单
 
@@ -207,6 +209,15 @@
 - [x] 优化前端 Nginx 代理参数以提升流式稳定性（关闭代理缓冲）
 - [x] 新增 M11 交付文档（`docs/M11-部署与发布交付说明.md`）
 
+## M12 验收清单
+
+- [x] 指标端点暴露：新增 Prometheus Registry 并开放 `/actuator/prometheus`
+- [x] 新增观测编排：`docker-compose.observability.yml`
+- [x] 新增 Prometheus 抓取配置：`monitoring/prometheus/prometheus.yml`
+- [x] 新增 Grafana 数据源与看板预置配置
+- [x] 新增观测脚本：`m12_obs_up/down/smoke`
+- [x] 新增 M12 交付文档（`docs/M12-可观测与运维加固交付说明.md`）
+
 ## 当前目录结构（M1）
 
 ```text
@@ -329,6 +340,24 @@ M11 镜像发布（本地构建）：
 
 ```bash
 ./scripts/m11_release.sh v1.0.0
+```
+
+M12 观测栈启动（Prometheus + Grafana）：
+
+```bash
+./scripts/m12_obs_up.sh
+```
+
+M12 观测冒烟：
+
+```bash
+./scripts/m12_obs_smoke.sh
+```
+
+M12 观测下线（仅观测组件）：
+
+```bash
+./scripts/m12_obs_down.sh
 ```
 
 ## 更新规则
@@ -458,3 +487,11 @@ M11 镜像发布（本地构建）：
 - 完成 tag 自动发布工作流：`.github/workflows/release-images.yml`（推送至 GHCR）。
 - 完成前端 Nginx 流式代理优化（`proxy_buffering off`）。
 - 完成 M11 交付文档：`docs/M11-部署与发布交付说明.md`。
+
+### M12（完成时间：2026-03-01）
+
+- 完成 Prometheus 指标暴露链路（依赖 + 配置 + 安全放行）。
+- 完成观测编排：`docker-compose.observability.yml`。
+- 完成 Prometheus 抓取与 Grafana 数据源/看板预置。
+- 完成观测运维脚本：`scripts/m12_obs_up.sh`、`scripts/m12_obs_down.sh`、`scripts/m12_obs_smoke.sh`。
+- 完成 M12 交付文档：`docs/M12-可观测与运维加固交付说明.md`。
