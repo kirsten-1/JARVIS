@@ -12,22 +12,27 @@ fi
 
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:${GATEWAY_PORT:-8080}}"
 PROM_URL="${PROM_URL:-http://localhost:${PROMETHEUS_PORT:-19090}}"
+ALERT_URL="${ALERT_URL:-http://localhost:${ALERTMANAGER_PORT:-19093}}"
 GRAFANA_URL="${GRAFANA_URL:-http://localhost:${GRAFANA_PORT:-13000}}"
 
 echo "[M12-OBS-SMOKE] GATEWAY_URL=${GATEWAY_URL}"
 echo "[M12-OBS-SMOKE] PROM_URL=${PROM_URL}"
+echo "[M12-OBS-SMOKE] ALERT_URL=${ALERT_URL}"
 echo "[M12-OBS-SMOKE] GRAFANA_URL=${GRAFANA_URL}"
 
-echo "[1/5] gateway health"
+echo "[1/6] gateway health"
 curl -fsS "${GATEWAY_URL}/actuator/health" >/dev/null
 
-echo "[2/5] prometheus ready"
+echo "[2/6] alertmanager ready"
+curl -fsS "${ALERT_URL}/-/ready" >/dev/null
+
+echo "[3/6] prometheus ready"
 curl -fsS "${PROM_URL}/-/ready" >/dev/null
 
-echo "[3/5] grafana health"
+echo "[4/6] grafana health"
 curl -fsS "${GRAFANA_URL}/api/health" >/dev/null
 
-echo "[4/5] prometheus scrape target check"
+echo "[5/6] prometheus scrape target check"
 UP_RESPONSE="$(curl -fsS "${PROM_URL}/api/v1/query?query=up%7Bjob%3D%22jarvis-gateway%22%7D")"
 if [[ "${UP_RESPONSE}" == *'"result":[]'* ]]; then
   echo "[M12-OBS-SMOKE] missing gateway target in prometheus query result"
@@ -46,7 +51,13 @@ fi
 
 echo "[M12-OBS-SMOKE] gateway target up=${UP_VALUE}"
 
-echo "[5/5] prometheus alert rules check"
+echo "[6/6] prometheus alerting/rules check"
+ALERTMANAGER_RESPONSE="$(curl -fsS "${PROM_URL}/api/v1/alertmanagers")"
+if [[ "${ALERTMANAGER_RESPONSE}" != *'alertmanager:9093'* ]]; then
+  echo "[M12-OBS-SMOKE] prometheus has no active alertmanager target"
+  exit 1
+fi
+
 RULES_RESPONSE="$(curl -fsS "${PROM_URL}/api/v1/rules")"
 if [[ "${RULES_RESPONSE}" != *'"name":"jarvis-gateway.rules"'* ]]; then
   echo "[M12-OBS-SMOKE] missing alert group: jarvis-gateway.rules"
@@ -58,5 +69,5 @@ if [[ "${RULES_RESPONSE}" != *'"name":"JarvisGatewayDown"'* ]]; then
   exit 1
 fi
 
-echo "[M12-OBS-SMOKE] alert rules loaded"
+echo "[M12-OBS-SMOKE] alertmanager connected and alert rules loaded"
 echo "[M12-OBS-SMOKE] SUCCESS"

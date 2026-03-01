@@ -1,10 +1,24 @@
 services:
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: jarvis-alertmanager-prod
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    ports:
+      - "${ALERTMANAGER_PORT:-19093}:9093"
+
   prometheus:
     image: prom/prometheus:v2.55.1
     container_name: jarvis-prometheus-prod
     restart: unless-stopped
     depends_on:
       - gateway
+      - alertmanager
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -34,5 +48,6 @@ services:
       - "${GRAFANA_PORT:-13000}:3000"
 
 volumes:
+  alertmanager_data:
   prometheus_data:
   grafana_data:

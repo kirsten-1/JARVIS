@@ -213,6 +213,7 @@
 
 - [x] 指标端点暴露：新增 Prometheus Registry 并开放 `/actuator/prometheus`
 - [x] 新增观测编排：`docker-compose.observability.yml`
+- [x] 新增 Alertmanager 配置：`monitoring/alertmanager/alertmanager.yml`
 - [x] 新增 Prometheus 抓取配置：`monitoring/prometheus/prometheus.yml`
 - [x] 新增 Prometheus 告警规则：`monitoring/prometheus/alerts.yml`
 - [x] 新增 Grafana 数据源与看板预置配置
@@ -343,7 +344,7 @@ M11 镜像发布（本地构建）：
 ./scripts/m11_release.sh v1.0.0
 ```
 
-M12 观测栈启动（Prometheus + Grafana）：
+M12 观测栈启动（Alertmanager + Prometheus + Grafana）：
 
 ```bash
 ./scripts/m12_obs_up.sh
@@ -492,7 +493,7 @@ M12 观测下线（仅观测组件）：
 ### M12（完成时间：2026-03-01）
 
 - 完成 Prometheus 指标暴露链路（依赖 + 配置 + 安全放行）。
-- 完成观测编排：`docker-compose.observability.yml`。
+- 完成观测编排：`Alertmanager + Prometheus + Grafana`（`docker-compose.observability.yml`）。
 - 完成 Prometheus 抓取与告警规则（可用性/错误率/时延/JVM 内存）。
 - 完成 Grafana 数据源与看板预置。
 - 完成观测运维脚本：`scripts/m12_obs_up.sh`、`scripts/m12_obs_down.sh`、`scripts/m12_obs_smoke.sh`。

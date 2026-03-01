@@ -42,10 +42,10 @@ echo "[M12-OBS-DOWN] stopping observability services only ..."
   -f "${ROOT_DIR}/docker-compose.prod.yml" \
   -f "${ROOT_DIR}/docker-compose.observability.yml" \
   --env-file "${ENV_FILE}" \
-  stop prometheus grafana
+  stop alertmanager prometheus grafana
 
 "${DC[@]}" \
   -f "${ROOT_DIR}/docker-compose.prod.yml" \
   -f "${ROOT_DIR}/docker-compose.observability.yml" \
   --env-file "${ENV_FILE}" \
-  rm -f prometheus grafana >/dev/null 2>&1 || true
+  rm -f alertmanager prometheus grafana >/dev/null 2>&1 || true
