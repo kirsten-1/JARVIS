@@ -1,0 +1,460 @@
+# gateway_pro 开发计划与进度
+
+本文件作为 `gateway_pro` 子项目的唯一进度记录页。后续每完成一个里程碑，直接在本文件更新状态、完成时间和验收结果。
+
+## 文档导航
+
+- `docs/项目完整规划与里程碑.md`：M1-M11 完整规划与当前状态
+- `docs/M1-工程骨架交付说明.md`：M1 详细交付内容
+- `docs/M3-网关基础能力交付说明.md`：M3 详细交付内容
+- `docs/M4-AI调用层交付说明.md`：M4 详细交付内容
+- `docs/M4.5-稳定化补丁说明.md`：M4.5 稳定化补丁说明
+- `docs/M4.6-多厂商路由交付说明.md`：M4.6 多厂商路由交付内容
+- `docs/M5-核心业务API交付说明.md`：M5 核心业务 API 交付内容
+- `docs/M5.5-安全上下文流式增强交付说明.md`：JWT/RBAC/配额限流/上下文缓存/流式落库增强
+- `docs/M6-Redis缓存优化交付说明.md`：读缓存、失效策略、热点响应缓存交付内容
+- `docs/M7-测试与交付说明.md`：测试矩阵、冒烟脚本、交付与验收说明
+- `docs/M8-前端联调控制台交付说明.md`：React + Ant Design 联调前端交付内容
+- `docs/M9-组织权限与计费观测增强规划.md`：组织权限、真实计费、运营看板规划
+- `docs/M10-容器化与CI交付说明.md`：Docker/Compose 本地一键启动与 GitHub Actions CI 交付
+- `docs/M11-部署与发布交付说明.md`：生产部署、镜像发布、回滚与运行手册
+- `docs/多厂商AI使用指南.md`：多厂商接入与路由使用指南
+- `docs/产品不足与增强路线.md`：当前产品不足与可增强路线
+- `docs/启动问题排查记录.md`：启动问题排查沉淀
+
+## 项目目标（当前阶段）
+
+- 搭建 Jarvis 第一项目中的 **Spring Boot 网关**（模块一的一部分）。
+- 先完成从 0 到可联调的 Java 网关，再向 Agent/RAG/Workflow/记忆模块扩展。
+
+## 本项目在 Jarvis 中的作用
+
+`gateway_pro` 当前是 Jarvis 的统一 AI 网关与会话编排中枢，负责：
+
+- 对外提供统一 API（同步/流式聊天、会话、消息），作为前端与业务侧入口。
+- 对内屏蔽多厂商模型协议差异，提供 provider/model 路由与 fallback。
+- 提供通用治理能力：JWT/RBAC、限流、配额、计费统计与可观测指标。
+- 提供会话基础设施：消息持久化、上下文拼装、Redis 缓存与流式恢复。
+
+在全局架构中，它为后续 Agent、RAG、Workflow、Memory 模块提供可复用的模型调用底座与流量入口。
+
+## 多厂商 AI 重点特性（M4.6）
+
+- 支持多厂商统一接入：DeepSeek、Gemini、阿里云、腾讯云、GLM、MiniMax、local。
+- 支持请求级路由：可通过 `provider/model` 动态切换目标厂商与模型。
+- 支持双协议适配：`OPENAI_COMPATIBLE` + `GEMINI`，同一网关统一对外接口。
+- 支持故障回退：主 provider 异常时可自动 fallback 到备 provider。
+- 支持统一错误语义：provider 未配置/禁用/配置错误有独立错误码。
+- 支持统一配置模板：`application-dev.yml` + `.env.example` 已提供多厂商变量。
+
+完整使用示例与排障说明见：
+- `docs/多厂商AI使用指南.md`
+
+## 里程碑计划
+
+| 里程碑 | 内容 | 预计工期 | 状态 |
+| --- | --- | --- | --- |
+| M1 | 工程骨架（启动类、配置、健康检查、Swagger、环境模板） | 0.5 天 | `completed` |
+| M2 | 数据层（Conversation/Message + Repository + 迁移） | 1 天 | `completed` |
+| M3 | 网关基础能力（统一返回、校验、异常处理） | 1 天 | `completed` |
+| M4 | AI 调用层（WebClient + AiServiceClient + 同步/流式） | 1.5 天 | `completed` |
+| M4.5 | 稳定化补丁（错误语义/重试策略/流式规范/指标） | 0.5 天 | `completed` |
+| M4.6 | 多厂商路由（DeepSeek/Gemini/阿里云/腾讯云/GLM/MiniMax） | 1 天 | `completed` |
+| M5 | 核心业务 API（会话/消息/聊天） | 1.5 天 | `completed` |
+| M5.5 | 安全与体验增强（JWT+RBAC+配额限流+上下文缓存+流式落库） | 1.5 天 | `completed` |
+| M6 | Redis 缓存与性能优化（上下文缓存、响应缓存） | 1 天 | `completed` |
+| M7 | 测试与交付（单测/集成测/压测基线/文档） | 1 天 | `completed` |
+| M8 | 前端联调控制台（React + Ant Design） | 1 天 | `completed` |
+| M9 | 组织权限 + 真实计费 + 运营看板 | 2 天 | `completed` |
+| M10 | 生产交付（容器化 + CI） | 1 天 | `completed` |
+| M11 | 部署与发布（prod 编排 + 镜像发布 + 运行手册） | 1 天 | `completed` |
+
+## M1 验收清单
+
+- [x] 替换默认模板工程为 Spring Boot 启动入口
+- [x] 建立后续开发包结构骨架
+- [x] 增加 `application.yml` 与 `application-dev.yml`
+- [x] 增加 `.env.example` 环境变量模板
+- [x] 增加 Actuator 依赖（健康检查）
+- [x] 执行构建验证（`mvn test`）
+
+## M2 验收清单
+
+- [x] 增加 `Conversation`、`Message` 实体
+- [x] 增加会话状态与消息角色枚举
+- [x] 增加 JPA Repository（会话/消息）
+- [x] 增加 Flyway 迁移脚本 `V1__init_conversation_message.sql`
+- [x] 启动验证 Flyway 在 MySQL 上成功建表
+
+## M3 验收清单
+
+- [x] 增加统一响应结构 `ApiResponse`
+- [x] 增加错误码模型与业务异常 `ErrorCode` / `BusinessException`
+- [x] 增加全局异常处理 `GlobalExceptionHandler`
+- [x] 增加请求 traceId 过滤器 `TraceIdFilter`
+- [x] 增加参数校验示例接口并验证成功/失败返回结构统一
+
+## M4 验收清单
+
+- [x] 实现 `AiServiceClient` 接口与 `WebClientAiServiceClient`
+- [x] 实现 AI 配置项 `AiServiceProperties`（URL、超时、重试、路径）
+- [x] 打通同步调用链：`POST /api/v1/ai/chat`
+- [x] 打通流式调用链：`POST /api/v1/ai/chat/stream`
+- [x] 完成下游异常映射（超时/不可达/错误响应）
+- [x] 增加 AI Client 单元测试（MockWebServer）
+
+## M4.5 验收清单
+
+- [x] `BusinessException` 支持携带 HTTP 状态码（如 503/504/502）
+- [x] 全局异常处理按异常状态码返回（不再全部固定 400）
+- [x] AI 调用默认关闭重试（`retry-enabled=false`，`max-retries=0`）
+- [x] AI 请求增加 `X-Request-Id`，支持上游防重
+- [x] 流式返回做 `data:` 规范化解析，过滤 `[DONE]`
+- [x] 增加 AI 调用基础指标（latency/errors/sessions）
+- [x] 增加回归测试（异常状态映射 + stream 解析）
+
+## M4.6 验收清单
+
+- [x] AI 请求支持 `provider` / `model` 两级路由参数
+- [x] 支持多 Provider 配置与动态选择（含本地 provider）
+- [x] 支持 OpenAI-compatible 与 Gemini 两类协议适配
+- [x] 支持 provider 级 fallback（主 provider 失败后切换）
+- [x] 新增 provider 错误码（未配置/禁用/配置无效）
+- [x] 扩展 `.env.example` 与 `application-dev.yml` 多厂商模板
+- [x] 增加路由/fallback/gemini 解析单元测试
+
+## M5 验收清单
+
+- [x] 会话管理接口：创建、分页列表、归档
+- [x] 消息管理接口：消息追加、历史查询
+- [x] 聊天主链路：用户消息落库 -> AI 调用 -> 助手消息落库
+- [x] 会话归属校验：按 `conversationId + userId` 校验访问权限
+- [x] 归档会话禁聊：已归档会话返回业务错误
+- [x] 新增 M5 服务层测试（ConversationService/ChatService）
+
+## M5.5 验收清单
+
+- [x] 接入 JWT 鉴权与 RBAC（USER/ADMIN）
+- [x] 新增开发态发 token 接口（dev/test profile）
+- [x] 会话接口从“裸 userId”升级为“认证上下文 + 管理员代操作”模型
+- [x] 增加 Redis 配额与限流守卫（分钟级限流 + 日配额）
+- [x] 增加 provider/model 维度配额控制（按用户日维度）
+- [x] 增加会话上下文拼装与 Redis 缓存（窗口裁剪 + TTL）
+- [x] 增加会话流式聊天接口并支持流式消息落库
+- [x] 增加流式会话恢复查询接口（`streamId` 快照）
+- [x] 增加首 token 时延指标（TTFT）
+- [x] 增加用量计费统计（prompt/completion tokens + 估算成本）
+- [x] 增加会话自动标题生成（默认标题首轮自动替换）
+- [x] 增加安全/守卫/上下文/流式相关单元测试
+
+## M6 验收清单
+
+- [x] 增加会话列表读缓存（按 `userId/page/size`）
+- [x] 增加消息列表读缓存（按 `conversationId/userId`）
+- [x] 增加写操作缓存失效（会话更新、消息写入后自动失效）
+- [x] 增加热点同步响应缓存（短 TTL，支持 `metadata.cacheBypass=true` 绕过）
+- [x] 增加缓存命中/未命中/写入/失效指标计数
+- [x] 增加 M6 配置项模板（`application-dev.yml` / `.env.example`）
+
+## M7 验收清单
+
+- [x] 补充 M6 相关测试（`ReadCacheServiceTest`、`HotResponseCacheServiceTest`）
+- [x] 增加热点缓存命中场景测试（`ChatServiceTest`）
+- [x] 提供本地冒烟脚本（`scripts/m7_smoke.sh`）
+- [x] 提供 M7 测试与交付文档（测试矩阵、验收步骤、命令清单）
+- [x] 更新里程碑文档，固化 M7 完成状态与风险说明
+- [x] 本机补验 `WebClientAiServiceClientTest`（6 用例通过，`exit code 0`）
+
+## M8 验收清单
+
+- [x] 新建 `frontend` 子工程（Vite + React + TypeScript）
+- [x] 接入 Ant Design 组件体系（表单、卡片、布局）
+- [x] 支持开发态 token 签发与展示（`/api/v1/auth/dev-token`）
+- [x] 支持会话创建与 `conversationId` 维护
+- [x] 支持 `workspaceId` 回填与手动输入
+- [x] 支持同步聊天联调（`/api/v1/conversations/{id}/chat`）
+- [x] 支持流式聊天联调（`/api/v1/conversations/{id}/chat/stream` + SSE 解析）
+- [x] 支持流式 meta/delta/done 展示与手动停止
+- [x] 支持运营指标查询与展示（`/api/v1/metrics/overview`、`/api/v1/metrics/providers`）
+
+## M9 规划清单（已完成）
+
+- [x] 组织级权限模型（workspace/member/role）落地（M9.1 首批）
+- [x] workspace 作用域资源隔离与鉴权链路改造（含 `VIEWER` 只读、`ADMIN/OWNER` 管理）
+- [x] 多厂商 usage 实际值映射与账本口径升级（M9.2 首批：sync `actual/estimated` + workspace 账本）
+- [x] 运营指标 API（成功率、fallback、TTFT、成本趋势）（M9.3 首批）
+- [x] 流式 usage 对齐（stream 返回 usage 时记 `actual`，否则回落 `estimated`）
+- [x] M9 文档与测试补齐（首批）
+- [x] M9 验收脚本补齐（`scripts/m9_smoke.sh`）
+
+## M10 验收清单
+
+- [x] 新增后端容器构建文件（`Dockerfile`、`.dockerignore`）
+- [x] 新增前端容器构建文件（`frontend/Dockerfile`、`frontend/.dockerignore`）
+- [x] 新增 Nginx 反向代理配置（`frontend/nginx/default.conf`）
+- [x] 新增一键联调编排（`docker-compose.yml`）
+- [x] 新增 Compose 启停脚本（`scripts/m10_up.sh`、`scripts/m10_down.sh`）
+- [x] 新增 GitHub Actions CI（`.github/workflows/ci.yml`）
+- [x] 新增 M10 交付文档（`docs/M10-容器化与CI交付说明.md`）
+
+## M11 验收清单
+
+- [x] 新增生产 profile 配置（`application-prod.yml`）
+- [x] 新增生产部署编排（`docker-compose.prod.yml` + `.env.prod.example`）
+- [x] 新增生产启停与冒烟脚本（`scripts/m11_prod_up.sh`、`scripts/m11_prod_down.sh`、`scripts/m11_smoke.sh`）
+- [x] 新增镜像发布脚本（`scripts/m11_release.sh`）
+- [x] 新增 GHCR 发布工作流（`.github/workflows/release-images.yml`）
+- [x] 优化前端 Nginx 代理参数以提升流式稳定性（关闭代理缓冲）
+- [x] 新增 M11 交付文档（`docs/M11-部署与发布交付说明.md`）
+
+## 当前目录结构（M1）
+
+```text
+src/main/java/com/bones/gateway/
+  GatewayApplication.java
+  common/
+  config/
+  controller/
+  dto/
+  entity/
+  integration/
+  repository/
+  service/
+src/main/resources/
+  application.yml
+  application-dev.yml
+frontend/
+  src/
+  package.json
+  vite.config.ts
+```
+
+## 本地依赖启动（dev）
+
+在启动 `GatewayApplication` 前，先保证 MySQL 与 Redis 可连通：
+
+```bash
+# MySQL
+/usr/local/mysql/bin/mysql --protocol=TCP -hlocalhost -P3306 -uroot -p -e "SHOW DATABASES LIKE 'jarvis';"
+
+# Redis
+brew services start redis
+redis-cli -h 127.0.0.1 -p 6379 ping
+```
+
+预期结果：
+- MySQL 能查到 `jarvis` 库。
+- Redis 返回 `PONG`。
+
+IDEA 运行 `GatewayApplication` 时，建议在 Run Configuration 中设置环境变量：
+- `MYSQL_PASSWORD=你的MySQL密码`
+- `SPRING_PROFILES_ACTIVE=dev`
+- `JARVIS_JWT_SECRET=一段长度>=32的密钥`
+
+开发态获取测试 token（dev/test）：
+
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/dev-token \
+  -H \"Content-Type: application/json\" \
+  -d '{\"userId\":1001,\"role\":\"USER\"}'
+```
+
+前端本地启动（M8）：
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+打开：
+- `http://localhost:5173`
+
+M7 冒烟脚本：
+
+```bash
+./scripts/m7_smoke.sh
+```
+
+可选 AI 冒烟：
+
+```bash
+RUN_AI_SMOKE=true PROVIDER=glm MODEL=glm-4.6v-flashx ./scripts/m7_smoke.sh
+```
+
+M9 运营指标冒烟脚本：
+
+```bash
+./scripts/m9_smoke.sh
+```
+
+M10 容器化一键启动：
+
+```bash
+./scripts/m10_up.sh
+```
+
+M10 停止容器：
+
+```bash
+./scripts/m10_down.sh
+```
+
+M10 停止并清理数据卷：
+
+```bash
+./scripts/m10_down.sh --volumes
+```
+
+M11 生产启动（镜像部署）：
+
+```bash
+cp .env.prod.example .env.prod
+./scripts/m11_prod_up.sh
+```
+
+M11 生产冒烟：
+
+```bash
+./scripts/m11_smoke.sh
+```
+
+M11 生产停止：
+
+```bash
+./scripts/m11_prod_down.sh
+```
+
+M11 镜像发布（本地构建）：
+
+```bash
+./scripts/m11_release.sh v1.0.0
+```
+
+## 更新规则
+
+- 每次里程碑状态只使用：`pending` / `in_progress` / `completed`。
+- 每个里程碑完成后补充“完成说明”与“验收命令结果”。
+- 未完成项必须保留在待办中，不跳过不删除。
+
+## 完成说明
+
+### M1（完成时间：2026-02-27）
+
+- 完成 Spring Boot 启动骨架替换：`GatewayApplication` 已建立。
+- 完成基础包结构预置：`config/controller/service/entity/repository/dto/common/integration`。
+- 完成环境配置模板：`application.yml`、`application-dev.yml`、`.env.example`。
+- 完成健康检查基础能力：引入 `spring-boot-starter-actuator`。
+- 完成可构建验证：`mvn test` 通过（测试环境使用 `test` profile + H2 内存库）。
+- 交付说明文档：`docs/M1-工程骨架交付说明.md`。
+
+### M2（完成时间：2026-02-28）
+
+- 完成实体：`Conversation`、`Message`。
+- 完成数据访问层：`ConversationRepository`、`MessageRepository`。
+- 完成数据库迁移：`src/main/resources/db/migration/V1__init_conversation_message.sql`。
+- 完成依赖与配置：引入 Flyway，关闭 Redis Repository 自动识别（保留 Redis 连接能力）。
+- 启动验收通过：应用启动日志显示 Flyway 将 schema 升级到 `v1` 并成功启动。
+
+### M3（完成时间：2026-02-28）
+
+- 完成统一响应模型：`ApiResponse`（包含 `code/message/data/traceId/timestamp`）。
+- 完成统一错误模型：`ErrorCode`、`BusinessException`。
+- 完成全局异常兜底：`GlobalExceptionHandler`（参数校验异常、业务异常、通用异常）。
+- 完成请求 traceId 注入：`TraceIdFilter`（支持透传 `X-Trace-Id`，自动回写响应头）。
+- 完成示例接口：`/api/v1/demo` 下 `ping/echo/biz-error/validate`，用于验证网关基础能力链路。
+
+### M4（完成时间：2026-02-28）
+
+- 完成 AI 调用配置：`AiServiceProperties` + `WebClientConfig`。
+- 完成 AI 客户端封装：`AiServiceClient` + `WebClientAiServiceClient`。
+- 完成同步与流式网关接口：`/api/v1/ai/chat`、`/api/v1/ai/chat/stream`。
+- 完成重试与异常映射：下游超时/连接异常/HTTP错误统一映射为业务错误码。
+- 完成单元测试：`WebClientAiServiceClientTest`（2个用例通过）。
+- 完成联调验证：通过本地 mock AI 服务验证同步与流式调用链可用。
+
+### M4.5（完成时间：2026-02-28）
+
+- 完成错误语义修正：AI 调用异常返回 502/503/504 级别状态。
+- 完成重试策略收敛：默认关闭重试，避免 POST 重复提交风险。
+- 完成 stream 规范化：提取 `data:` 有效内容并过滤终止标记。
+- 完成可观测性补丁：增加 AI chat/stream 关键指标。
+- 完成测试补丁：`GlobalExceptionHandlerTest`、`WebClientAiServiceClientTest` 新增用例。
+
+### M4.6（完成时间：2026-02-28）
+
+- 完成多 Provider 路由：请求可按 `provider`/`model` 指定目标模型厂商。
+- 完成协议适配：支持 `OPENAI_COMPATIBLE` 与 `GEMINI` 协议。
+- 完成 provider fallback：主 provider 失败时可切换备 provider。
+- 完成配置扩展：新增 DeepSeek/Gemini/阿里云/腾讯云/GLM/MiniMax 配置模板。
+- 完成测试扩展：新增 provider 路由、fallback、Gemini 解析测试用例。
+
+### M5（完成时间：2026-02-28）
+
+- 完成会话 API：`创建/分页列表/归档`。
+- 完成消息 API：`追加消息/查询历史`。
+- 完成聊天主流程：`USER 消息落库 -> 调用 AiServiceClient -> ASSISTANT 消息落库`。
+- 完成会话状态管控：归档会话禁止继续聊天。
+- 完成测试补充：`ConversationServiceTest`、`ChatServiceTest`。
+
+### M5.5（完成时间：2026-02-28）
+
+- 完成 JWT + RBAC：新增认证过滤器、安全配置、权限解析与开发态 token 签发接口。
+- 完成配额与限流：按用户实现 Redis 分钟限流 + 日配额控制。
+- 完成 provider/model 配额：新增按用户+provider+model 的日维度限制。
+- 完成上下文拼装：基于消息历史构建多轮 prompt，并缓存到 Redis（窗口 + TTL）。
+- 完成流式落库：新增会话流式接口，流式完成后自动持久化 assistant 消息。
+- 完成流式恢复：新增 `streamId` 快照查询接口，支持断线后恢复读取进度。
+- 完成体验指标：新增首 token 时延指标 `jarvis.chat.stream.first_token.latency`。
+- 完成成本核算：新增 tokens 估算与用量计费统计（日维度 Redis 账本）。
+- 完成会话体验增强：默认“新会话”在首轮对话后自动生成标题。
+- 完成测试覆盖：新增 `AccessControlServiceTest`、`RequestGuardServiceTest`、`ConversationContextServiceTest`，并扩展 `ChatServiceTest` 流式场景。
+
+### M6（完成时间：2026-02-28）
+
+- 完成读缓存能力：会话列表与消息列表接入 Redis 读缓存。
+- 完成缓存失效策略：会话创建/归档/更新时间变更、消息写入/更新后自动按前缀失效。
+- 完成热点响应缓存：同步聊天增加短期热点缓存，降低重复请求成本与延迟。
+- 完成可观测性补充：新增缓存 hit/miss/write/evict 指标计数。
+- 完成配置扩展：新增 `jarvis.cache.*` 配置及环境变量模板。
+- 完成交付文档：`docs/M6-Redis缓存优化交付说明.md`。
+
+### M7（完成时间：2026-02-28）
+
+- 完成测试补强：新增 `ReadCacheServiceTest`、`HotResponseCacheServiceTest`，扩展 `ChatServiceTest` 热点缓存命中场景。
+- 完成可执行冒烟脚本：`scripts/m7_smoke.sh`（health/token/会话/消息/列表，支持可选 AI 冒烟）。
+- 完成测试交付文档：`docs/M7-测试与交付说明.md`（测试矩阵、命令、IDEA 验收步骤）。
+- 完成里程碑归档：README 与规划文档同步更新为 M7 `completed`。
+
+### M8（完成时间：2026-02-28）
+
+- 新建 `frontend` 工程：`Vite + React + TypeScript`。
+- UI 采用 Ant Design，形成统一的联调控制台界面。
+- 打通 `dev-token -> 会话创建 -> 同步聊天 -> 流式聊天` 完整前端调试链路。
+- 支持 SSE 事件解析（`meta/delta/done`）与流式中断。
+- 完成前端交付文档：`docs/M8-前端联调控制台交付说明.md`。
+
+### M9（完成时间：2026-03-01）
+
+- 完成组织级权限模型：`workspace`/`workspace_member` 与成员角色边界校验。
+- 完成计费账本口径升级：支持 `actual/estimated` 双口径与 workspace 聚合。
+- 完成运营指标接口：总览、provider 维度、TTFT 分位与 fallback 命中统计。
+- 完成 M9 冒烟脚本：`scripts/m9_smoke.sh`。
+
+### M10（完成时间：2026-03-01）
+
+- 完成后端与前端容器化构建（多阶段构建 + 轻量运行镜像）。
+- 完成本地联调编排：`mysql + redis + gateway + frontend` 一键拉起。
+- 完成前端容器内反向代理：统一通过 `/api` 访问网关接口。
+- 完成 CI 流水线：后端 `mvn test` + 前端 `npm run build`。
+- 完成 M10 交付文档：`docs/M10-容器化与CI交付说明.md`。
+
+### M11（完成时间：2026-03-01）
+
+- 完成 `prod` 配置与部署编排：`application-prod.yml` + `docker-compose.prod.yml`。
+- 完成生产环境参数模板：`.env.prod.example`。
+- 完成生产启停与冒烟脚本：`scripts/m11_prod_up.sh`、`scripts/m11_prod_down.sh`、`scripts/m11_smoke.sh`。
+- 完成镜像发布脚本：`scripts/m11_release.sh`。
+- 完成 tag 自动发布工作流：`.github/workflows/release-images.yml`（推送至 GHCR）。
+- 完成前端 Nginx 流式代理优化（`proxy_buffering off`）。
+- 完成 M11 交付文档：`docs/M11-部署与发布交付说明.md`。

@@ -1,0 +1,23 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:jarvis_test;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+  flyway:
+    enabled: false
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      timeout: 1s
+
+jarvis:
+  ai:
+    base-url: http://localhost:8000
+    connect-timeout-ms: 1000
+    read-timeout-ms: 5000

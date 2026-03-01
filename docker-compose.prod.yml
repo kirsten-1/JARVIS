@@ -1,0 +1,97 @@
+services:
+  mysql:
+    image: mysql:8.0.39
+    container_name: jarvis-mysql-prod
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change_me}
+      MYSQL_DATABASE: jarvis
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: jarvis-redis-prod
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${REDIS_PASSWORD:-change_me}
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-change_me}
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $${REDIS_PASSWORD} ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  gateway:
+    container_name: jarvis-gateway-prod
+    image: ${GATEWAY_IMAGE:-ghcr.io/your-org/jarvis-gateway-pro:latest}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8080
+      MYSQL_URL: jdbc:mysql://mysql:3306/jarvis?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+      MYSQL_USERNAME: root
+      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change_me}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-change_me}
+      JARVIS_JWT_SECRET: ${JARVIS_JWT_SECRET:-change-me-please-change-me-please-change-me}
+      AI_DEFAULT_PROVIDER: ${AI_DEFAULT_PROVIDER:-local}
+      AI_LOCAL_ENABLED: ${AI_LOCAL_ENABLED:-false}
+      AI_LOCAL_BASE_URL: ${AI_LOCAL_BASE_URL:-http://host.docker.internal:8000}
+      AI_LOCAL_CHAT_PATH: ${AI_LOCAL_CHAT_PATH:-/v1/chat}
+      AI_LOCAL_STREAM_PATH: ${AI_LOCAL_STREAM_PATH:-/v1/chat/stream}
+      AI_GLM_ENABLED: ${AI_GLM_ENABLED:-false}
+      AI_GLM_BASE_URL: ${AI_GLM_BASE_URL:-https://open.bigmodel.cn/api/paas/v4}
+      AI_GLM_API_KEY: ${AI_GLM_API_KEY:-}
+      AI_GLM_MODEL: ${AI_GLM_MODEL:-glm-4-plus}
+      AI_DEEPSEEK_ENABLED: ${AI_DEEPSEEK_ENABLED:-false}
+      AI_DEEPSEEK_BASE_URL: ${AI_DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      AI_DEEPSEEK_API_KEY: ${AI_DEEPSEEK_API_KEY:-}
+      AI_DEEPSEEK_MODEL: ${AI_DEEPSEEK_MODEL:-deepseek-chat}
+      AI_GEMINI_ENABLED: ${AI_GEMINI_ENABLED:-false}
+      AI_GEMINI_BASE_URL: ${AI_GEMINI_BASE_URL:-https://generativelanguage.googleapis.com}
+      AI_GEMINI_API_KEY: ${AI_GEMINI_API_KEY:-}
+      AI_GEMINI_MODEL: ${AI_GEMINI_MODEL:-gemini-2.0-flash}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+
+  frontend:
+    container_name: jarvis-frontend-prod
+    image: ${FRONTEND_IMAGE:-ghcr.io/your-org/jarvis-gateway-console:latest}
+    depends_on:
+      - gateway
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+
+volumes:
+  mysql_data:
+  redis_data:

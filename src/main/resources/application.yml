@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: gateway-pro
+  profiles:
+    active: dev
+  data:
+    redis:
+      repositories:
+        enabled: false
+
+server:
+  port: ${SERVER_PORT:8080}
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  pattern:
+    level: "%5p [traceId:%X{traceId:-N/A}]"

@@ -1,0 +1,18 @@
+# Runtime secrets
+.env
+.env.*
+!.env.example
+!.env.prod.example
+
+# Build outputs
+target/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+frontend/node_modules/
+
+# IDE / OS
+.idea/
+.DS_Store
+
+# Logs
+*.log

@@ -1,0 +1,146 @@
+spring:
+  datasource:
+    url: ${MYSQL_URL:jdbc:mysql://localhost:3306/jarvis?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+    show-sql: false
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+      timeout: ${REDIS_TIMEOUT:3s}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:3s}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+  health:
+    redis:
+      enabled: true
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+logging:
+  level:
+    root: INFO
+
+jarvis:
+  security:
+    enabled: ${JARVIS_SECURITY_ENABLED:true}
+    jwt-secret: ${JARVIS_JWT_SECRET:change-me-please-change-me-please-change-me}
+    issuer: ${JARVIS_JWT_ISSUER:jarvis-gateway}
+    expire-seconds: ${JARVIS_JWT_EXPIRE_SECONDS:86400}
+  guard:
+    enabled: ${JARVIS_GUARD_ENABLED:true}
+    per-minute-limit: ${JARVIS_GUARD_PER_MINUTE_LIMIT:60}
+    per-day-quota: ${JARVIS_GUARD_PER_DAY_QUOTA:2000}
+    per-day-provider-model-quota: ${JARVIS_GUARD_PER_DAY_PROVIDER_MODEL_QUOTA:500}
+  context:
+    cache-enabled: ${JARVIS_CONTEXT_CACHE_ENABLED:true}
+    window-size: ${JARVIS_CONTEXT_WINDOW_SIZE:12}
+    cache-ttl-seconds: ${JARVIS_CONTEXT_CACHE_TTL_SECONDS:1800}
+  billing:
+    enabled: ${JARVIS_BILLING_ENABLED:true}
+    default-input-cost-per1k: ${JARVIS_BILLING_DEFAULT_INPUT_COST_PER1K:0.001}
+    default-output-cost-per1k: ${JARVIS_BILLING_DEFAULT_OUTPUT_COST_PER1K:0.002}
+  stream:
+    enabled: ${JARVIS_STREAM_ENABLED:true}
+    ttl-seconds: ${JARVIS_STREAM_TTL_SECONDS:86400}
+  cache:
+    enabled: ${JARVIS_CACHE_ENABLED:true}
+    conversation-list-ttl-seconds: ${JARVIS_CACHE_CONVERSATION_LIST_TTL_SECONDS:120}
+    message-list-ttl-seconds: ${JARVIS_CACHE_MESSAGE_LIST_TTL_SECONDS:60}
+    hot-response-enabled: ${JARVIS_CACHE_HOT_RESPONSE_ENABLED:true}
+    hot-response-ttl-seconds: ${JARVIS_CACHE_HOT_RESPONSE_TTL_SECONDS:45}
+  ai:
+    default-provider: ${AI_DEFAULT_PROVIDER:local}
+    fallback-enabled: ${AI_FALLBACK_ENABLED:false}
+    fallback-provider: ${AI_FALLBACK_PROVIDER:}
+    connect-timeout-ms: ${AI_SERVICE_CONNECT_TIMEOUT_MS:3000}
+    read-timeout-ms: ${AI_SERVICE_READ_TIMEOUT_MS:30000}
+    retry-enabled: ${AI_SERVICE_RETRY_ENABLED:false}
+    max-retries: ${AI_SERVICE_MAX_RETRIES:0}
+    retry-backoff-ms: ${AI_SERVICE_RETRY_BACKOFF_MS:300}
+    # legacy single-provider config (kept for compatibility)
+    base-url: ${AI_SERVICE_BASE_URL:http://localhost:8000}
+    chat-path: ${AI_SERVICE_CHAT_PATH:/v1/chat}
+    stream-path: ${AI_SERVICE_STREAM_PATH:/v1/chat/stream}
+    api-key: ${AI_SERVICE_API_KEY:}
+    model: ${AI_SERVICE_MODEL:}
+    providers:
+      local:
+        enabled: ${AI_LOCAL_ENABLED:true}
+        protocol: OPENAI_COMPATIBLE
+        base-url: ${AI_LOCAL_BASE_URL:http://localhost:8000}
+        chat-path: ${AI_LOCAL_CHAT_PATH:/v1/chat}
+        stream-path: ${AI_LOCAL_STREAM_PATH:/v1/chat/stream}
+        model: ${AI_LOCAL_MODEL:}
+      deepseek:
+        enabled: ${AI_DEEPSEEK_ENABLED:false}
+        protocol: OPENAI_COMPATIBLE
+        base-url: ${AI_DEEPSEEK_BASE_URL:https://api.deepseek.com}
+        chat-path: ${AI_DEEPSEEK_CHAT_PATH:/v1/chat/completions}
+        stream-path: ${AI_DEEPSEEK_STREAM_PATH:/v1/chat/completions}
+        api-key: ${AI_DEEPSEEK_API_KEY:}
+        model: ${AI_DEEPSEEK_MODEL:deepseek-chat}
+      glm:
+        enabled: ${AI_GLM_ENABLED:false}
+        protocol: OPENAI_COMPATIBLE
+        base-url: ${AI_GLM_BASE_URL:https://open.bigmodel.cn/api/paas/v4}
+        chat-path: ${AI_GLM_CHAT_PATH:/chat/completions}
+        stream-path: ${AI_GLM_STREAM_PATH:/chat/completions}
+        api-key: ${AI_GLM_API_KEY:}
+        model: ${AI_GLM_MODEL:glm-4-plus}
+      minimax:
+        enabled: ${AI_MINIMAX_ENABLED:false}
+        protocol: OPENAI_COMPATIBLE
+        base-url: ${AI_MINIMAX_BASE_URL:https://api.minimax.chat/v1}
+        chat-path: ${AI_MINIMAX_CHAT_PATH:/text/chatcompletion_v2}
+        stream-path: ${AI_MINIMAX_STREAM_PATH:/text/chatcompletion_v2}
+        api-key: ${AI_MINIMAX_API_KEY:}
+        model: ${AI_MINIMAX_MODEL:MiniMax-Text-01}
+      aliyun:
+        enabled: ${AI_ALIYUN_ENABLED:false}
+        protocol: OPENAI_COMPATIBLE
+        base-url: ${AI_ALIYUN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+        chat-path: ${AI_ALIYUN_CHAT_PATH:/chat/completions}
+        stream-path: ${AI_ALIYUN_STREAM_PATH:/chat/completions}
+        api-key: ${AI_ALIYUN_API_KEY:}
+        model: ${AI_ALIYUN_MODEL:qwen-plus}
+      tencent:
+        enabled: ${AI_TENCENT_ENABLED:false}
+        protocol: OPENAI_COMPATIBLE
+        base-url: ${AI_TENCENT_BASE_URL:http://localhost:8000}
+        chat-path: ${AI_TENCENT_CHAT_PATH:/v1/chat/completions}
+        stream-path: ${AI_TENCENT_STREAM_PATH:/v1/chat/completions}
+        api-key: ${AI_TENCENT_API_KEY:}
+        model: ${AI_TENCENT_MODEL:hunyuan-standard}
+      gemini:
+        enabled: ${AI_GEMINI_ENABLED:false}
+        protocol: GEMINI
+        base-url: ${AI_GEMINI_BASE_URL:https://generativelanguage.googleapis.com}
+        chat-path: ${AI_GEMINI_CHAT_PATH:/v1beta/models/{model}:generateContent}
+        stream-path: ${AI_GEMINI_STREAM_PATH:/v1beta/models/{model}:streamGenerateContent?alt=sse}
+        api-key: ${AI_GEMINI_API_KEY:}
+        model: ${AI_GEMINI_MODEL:gemini-2.0-flash}
+        api-key-in-query: true
+        api-key-query-name: key
