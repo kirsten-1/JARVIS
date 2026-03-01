@@ -1,0 +1,56 @@
+groups:
+  - name: jarvis-gateway.rules
+    rules:
+      - alert: JarvisGatewayDown
+        expr: up{job="jarvis-gateway"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: gateway-pro
+        annotations:
+          summary: "Jarvis gateway scrape target is down"
+          description: "Prometheus cannot scrape jarvis-gateway for more than 2 minutes."
+
+      - alert: JarvisHigh5xxRate
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{job="jarvis-gateway",status=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(http_server_requests_seconds_count{job="jarvis-gateway"}[5m])), 0.001)
+          ) > 0.10
+        for: 10m
+        labels:
+          severity: warning
+          service: gateway-pro
+        annotations:
+          summary: "Jarvis gateway 5xx rate is high"
+          description: "5xx error ratio stays above 10% in the last 10 minutes."
+
+      - alert: JarvisHighP95Latency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(http_server_requests_seconds_bucket{job="jarvis-gateway"}[5m]))
+          ) > 2
+        for: 10m
+        labels:
+          severity: warning
+          service: gateway-pro
+        annotations:
+          summary: "Jarvis gateway P95 latency is high"
+          description: "HTTP request P95 latency stays above 2 seconds in the last 10 minutes."
+
+      - alert: JarvisJvmHighHeapUsage
+        expr: |
+          (
+            sum(jvm_memory_used_bytes{job="jarvis-gateway",area="heap"})
+            /
+            clamp_min(sum(jvm_memory_max_bytes{job="jarvis-gateway",area="heap"}), 1)
+          ) > 0.85
+        for: 15m
+        labels:
+          severity: warning
+          service: gateway-pro
+        annotations:
+          summary: "Jarvis gateway heap usage is high"
+          description: "JVM heap usage stays above 85% for 15 minutes."

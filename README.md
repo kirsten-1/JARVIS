@@ -214,6 +214,7 @@
 - [x] 指标端点暴露：新增 Prometheus Registry 并开放 `/actuator/prometheus`
 - [x] 新增观测编排：`docker-compose.observability.yml`
 - [x] 新增 Prometheus 抓取配置：`monitoring/prometheus/prometheus.yml`
+- [x] 新增 Prometheus 告警规则：`monitoring/prometheus/alerts.yml`
 - [x] 新增 Grafana 数据源与看板预置配置
 - [x] 新增观测脚本：`m12_obs_up/down/smoke`
 - [x] 新增 M12 交付文档（`docs/M12-可观测与运维加固交付说明.md`）
@@ -492,6 +493,7 @@ M12 观测下线（仅观测组件）：
 
 - 完成 Prometheus 指标暴露链路（依赖 + 配置 + 安全放行）。
 - 完成观测编排：`docker-compose.observability.yml`。
-- 完成 Prometheus 抓取与 Grafana 数据源/看板预置。
+- 完成 Prometheus 抓取与告警规则（可用性/错误率/时延/JVM 内存）。
+- 完成 Grafana 数据源与看板预置。
 - 完成观测运维脚本：`scripts/m12_obs_up.sh`、`scripts/m12_obs_down.sh`、`scripts/m12_obs_smoke.sh`。
 - 完成 M12 交付文档：`docs/M12-可观测与运维加固交付说明.md`。

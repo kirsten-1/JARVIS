@@ -18,18 +18,18 @@ echo "[M12-OBS-SMOKE] GATEWAY_URL=${GATEWAY_URL}"
 echo "[M12-OBS-SMOKE] PROM_URL=${PROM_URL}"
 echo "[M12-OBS-SMOKE] GRAFANA_URL=${GRAFANA_URL}"
 
-echo "[1/4] gateway health"
+echo "[1/5] gateway health"
 curl -fsS "${GATEWAY_URL}/actuator/health" >/dev/null
 
-echo "[2/4] prometheus ready"
+echo "[2/5] prometheus ready"
 curl -fsS "${PROM_URL}/-/ready" >/dev/null
 
-echo "[3/4] grafana health"
+echo "[3/5] grafana health"
 curl -fsS "${GRAFANA_URL}/api/health" >/dev/null
 
-echo "[4/4] prometheus scrape target check"
+echo "[4/5] prometheus scrape target check"
 UP_RESPONSE="$(curl -fsS "${PROM_URL}/api/v1/query?query=up%7Bjob%3D%22jarvis-gateway%22%7D")"
-if echo "${UP_RESPONSE}" | grep -q '"result":\[\]'; then
+if [[ "${UP_RESPONSE}" == *'"result":[]'* ]]; then
   echo "[M12-OBS-SMOKE] missing gateway target in prometheus query result"
   exit 1
 fi
@@ -45,4 +45,18 @@ if [[ "${UP_VALUE}" != "1" ]]; then
 fi
 
 echo "[M12-OBS-SMOKE] gateway target up=${UP_VALUE}"
+
+echo "[5/5] prometheus alert rules check"
+RULES_RESPONSE="$(curl -fsS "${PROM_URL}/api/v1/rules")"
+if [[ "${RULES_RESPONSE}" != *'"name":"jarvis-gateway.rules"'* ]]; then
+  echo "[M12-OBS-SMOKE] missing alert group: jarvis-gateway.rules"
+  exit 1
+fi
+
+if [[ "${RULES_RESPONSE}" != *'"name":"JarvisGatewayDown"'* ]]; then
+  echo "[M12-OBS-SMOKE] missing key alert rule: JarvisGatewayDown"
+  exit 1
+fi
+
+echo "[M12-OBS-SMOKE] alert rules loaded"
 echo "[M12-OBS-SMOKE] SUCCESS"
