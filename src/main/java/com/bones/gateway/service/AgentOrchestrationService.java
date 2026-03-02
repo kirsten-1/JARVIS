@@ -6,7 +6,6 @@ import com.bones.gateway.dto.AgentRunRequest;
 import com.bones.gateway.dto.AgentRunResponse;
 import com.bones.gateway.dto.AgentStepResponse;
 import com.bones.gateway.dto.ConversationChatRequest;
-import com.bones.gateway.dto.MessageItemResponse;
 import com.bones.gateway.entity.Conversation;
 import com.bones.gateway.entity.ConversationStatus;
 import com.bones.gateway.entity.Message;
@@ -15,13 +14,16 @@ import com.bones.gateway.integration.ai.AiServiceClient;
 import com.bones.gateway.integration.ai.model.AiChatMessage;
 import com.bones.gateway.integration.ai.model.AiChatRequest;
 import com.bones.gateway.integration.ai.model.AiChatResponse;
+import com.bones.gateway.service.agent.AgentTool;
+import com.bones.gateway.service.agent.AgentToolContext;
+import com.bones.gateway.service.agent.AgentToolRegistry;
+import com.bones.gateway.service.agent.ConversationDigestAgentTool;
+import com.bones.gateway.service.agent.TimeNowAgentTool;
+import com.bones.gateway.service.agent.WorkspaceMetricsOverviewAgentTool;
 import com.bones.gateway.service.BillingService.UsageSource;
-import com.bones.gateway.dto.MetricsOverviewResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -31,20 +33,27 @@ import java.util.Map;
 import java.util.Objects;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 @Service
 public class AgentOrchestrationService {
 
-    private static final String TOOL_TIME_NOW = "time_now";
-    private static final String TOOL_WORKSPACE_METRICS = "workspace_metrics_overview";
-    private static final String TOOL_CONVERSATION_DIGEST = "conversation_digest";
+    private static final String TOOL_TIME_NOW = TimeNowAgentTool.NAME;
+    private static final String TOOL_WORKSPACE_METRICS = WorkspaceMetricsOverviewAgentTool.NAME;
+    private static final String TOOL_CONVERSATION_DIGEST = ConversationDigestAgentTool.NAME;
     private static final String PLANNER_MODE_RULE = "rule";
     private static final String PLANNER_MODE_LLM_JSON = "llm_json";
     private static final String METADATA_PLANNER_MODE = "plannerMode";
     private static final String METADATA_ALLOWED_TOOLS = "allowedTools";
+    private static final String METADATA_TOOL_TIMEOUT_MS = "toolTimeoutMs";
+    private static final String METADATA_TOOL_MAX_RETRIES = "toolMaxRetries";
 
     private static final int DEFAULT_MAX_STEPS = 3;
-    private static final int DEFAULT_DIGEST_LIMIT = 8;
+    private static final int DEFAULT_TOOL_TIMEOUT_MS = 2000;
+    private static final int DEFAULT_TOOL_MAX_RETRIES = 0;
+    private static final int MAX_TOOL_TIMEOUT_MS = 15000;
+    private static final int MAX_TOOL_MAX_RETRIES = 2;
     private static final int MAX_PROMPT_STEP_OUTPUT_CHARS = 1200;
     private static final int MAX_PLANNER_RESPONSE_CHARS = 2000;
 
@@ -56,6 +65,7 @@ public class AgentOrchestrationService {
     private final BillingService billingService;
     private final TokenEstimator tokenEstimator;
     private final OpsMetricsService opsMetricsService;
+    private final AgentToolRegistry toolRegistry;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AgentOrchestrationService(ConversationService conversationService,
@@ -65,7 +75,8 @@ public class AgentOrchestrationService {
                                      RequestGuardService requestGuardService,
                                      BillingService billingService,
                                      TokenEstimator tokenEstimator,
-                                     OpsMetricsService opsMetricsService) {
+                                     OpsMetricsService opsMetricsService,
+                                     AgentToolRegistry toolRegistry) {
         this.conversationService = conversationService;
         this.messageService = messageService;
         this.conversationContextService = conversationContextService;
@@ -74,6 +85,7 @@ public class AgentOrchestrationService {
         this.billingService = billingService;
         this.tokenEstimator = tokenEstimator;
         this.opsMetricsService = opsMetricsService;
+        this.toolRegistry = toolRegistry;
     }
 
     public AgentRunResponse run(Long conversationId, AgentRunRequest request) {
@@ -107,7 +119,8 @@ public class AgentOrchestrationService {
                     plannedTools,
                     conversationId,
                     request.userId(),
-                    conversation.getWorkspaceId()
+                    conversation.getWorkspaceId(),
+                    request.metadata()
             );
 
             String agentPrompt = buildAgentPrompt(userInput, stepResults);
@@ -184,29 +197,63 @@ public class AgentOrchestrationService {
     private List<AgentStepResult> executeToolPlan(List<String> plannedTools,
                                                   Long conversationId,
                                                   Long userId,
-                                                  Long workspaceId) {
+                                                  Long workspaceId,
+                                                  Map<String, Object> metadata) {
+        AgentToolContext context = new AgentToolContext(conversationId, userId, workspaceId, metadata);
+        int timeoutMs = resolveToolTimeoutMs(metadata);
+        int maxRetries = resolveToolMaxRetries(metadata);
         List<AgentStepResult> result = new ArrayList<>();
         for (int i = 0; i < plannedTools.size(); i++) {
-            String tool = plannedTools.get(i);
+            String toolName = plannedTools.get(i);
             long startedAt = System.nanoTime();
-            try {
-                String toolInput = buildToolInput(tool, conversationId, workspaceId);
-                String toolOutput = executeTool(tool, conversationId, userId, workspaceId);
+            AgentTool tool = toolRegistry.get(toolName).orElse(null);
+            if (tool == null) {
                 long durationMs = (System.nanoTime() - startedAt) / 1_000_000;
-                result.add(new AgentStepResult(i + 1, tool, "success", toolInput, toolOutput, durationMs));
+                result.add(new AgentStepResult(
+                        i + 1,
+                        toolName,
+                        "failed",
+                        "{}",
+                        truncate("tool not registered: " + toolName, MAX_PROMPT_STEP_OUTPUT_CHARS),
+                        durationMs
+                ));
+                continue;
+            }
+            try {
+                String toolInput = tool.buildInput(context);
+                String toolOutput = executeToolWithPolicy(tool, context, timeoutMs, maxRetries);
+                long durationMs = (System.nanoTime() - startedAt) / 1_000_000;
+                result.add(new AgentStepResult(i + 1, toolName, "success", toolInput, toolOutput, durationMs));
             } catch (RuntimeException ex) {
                 long durationMs = (System.nanoTime() - startedAt) / 1_000_000;
                 result.add(new AgentStepResult(
                         i + 1,
-                        tool,
+                        toolName,
                         "failed",
-                        buildToolInput(tool, conversationId, workspaceId),
+                        tool.buildInput(context),
                         truncate("tool execution failed: " + ex.getMessage(), MAX_PROMPT_STEP_OUTPUT_CHARS),
                         durationMs
                 ));
             }
         }
         return result;
+    }
+
+    private String executeToolWithPolicy(AgentTool tool,
+                                         AgentToolContext context,
+                                         int timeoutMs,
+                                         int maxRetries) {
+        Mono<String> execution = Mono.fromCallable(() -> tool.execute(context))
+                .subscribeOn(Schedulers.boundedElastic())
+                .timeout(Duration.ofMillis(timeoutMs))
+                .onErrorMap(throwable -> new RuntimeException(
+                        "tool " + tool.name() + " failed: " + throwable.getMessage(),
+                        throwable
+                ));
+        if (maxRetries > 0) {
+            execution = execution.retry(maxRetries);
+        }
+        return execution.blockOptional().orElse("");
     }
 
     private List<String> planTools(String userInput,
@@ -274,60 +321,6 @@ public class AgentOrchestrationService {
         } catch (RuntimeException ex) {
             return List.of();
         }
-    }
-
-    private String buildToolInput(String tool, Long conversationId, Long workspaceId) {
-        return switch (tool) {
-            case TOOL_TIME_NOW -> "{}";
-            case TOOL_WORKSPACE_METRICS -> "{\"workspaceId\":" + workspaceId + ",\"range\":\"last_7_days\"}";
-            case TOOL_CONVERSATION_DIGEST -> "{\"conversationId\":" + conversationId + ",\"limit\":" + DEFAULT_DIGEST_LIMIT + "}";
-            default -> "{}";
-        };
-    }
-
-    private String executeTool(String tool, Long conversationId, Long userId, Long workspaceId) {
-        return switch (tool) {
-            case TOOL_TIME_NOW -> executeTimeNowTool();
-            case TOOL_WORKSPACE_METRICS -> executeWorkspaceMetricsTool(workspaceId);
-            case TOOL_CONVERSATION_DIGEST -> executeConversationDigestTool(conversationId, userId, DEFAULT_DIGEST_LIMIT);
-            default -> "unsupported tool: " + tool;
-        };
-    }
-
-    private String executeTimeNowTool() {
-        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
-        return "current_time=" + now.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) + ", timezone=Asia/Shanghai";
-    }
-
-    private String executeWorkspaceMetricsTool(Long workspaceId) {
-        if (workspaceId == null) {
-            return "workspace is null, metrics unavailable";
-        }
-        MetricsOverviewResponse overview = opsMetricsService.getOverview(workspaceId, null, null);
-        return "workspaceId=" + overview.workspaceId()
-                + ", totalRequests=" + overview.totalRequests()
-                + ", successRate=" + overview.successRate()
-                + ", fallbackRate=" + overview.fallbackRate()
-                + ", ttftP50Ms=" + overview.ttftP50Ms()
-                + ", ttftP90Ms=" + overview.ttftP90Ms();
-    }
-
-    private String executeConversationDigestTool(Long conversationId, Long userId, int limit) {
-        List<MessageItemResponse> all = messageService.listMessages(conversationId, userId);
-        if (all.isEmpty()) {
-            return "no historical messages";
-        }
-        int fromIndex = Math.max(0, all.size() - Math.max(1, limit));
-        List<MessageItemResponse> tail = all.subList(fromIndex, all.size());
-        StringBuilder digest = new StringBuilder();
-        for (MessageItemResponse item : tail) {
-            String role = item.role() == null ? "unknown" : item.role().name();
-            digest.append(role)
-                    .append(": ")
-                    .append(truncate(item.content(), 120))
-                    .append('\n');
-        }
-        return truncate(digest.toString().trim(), MAX_PROMPT_STEP_OUTPUT_CHARS);
     }
 
     private String buildAgentPrompt(String userInput, List<AgentStepResult> steps) {
@@ -480,7 +473,35 @@ public class AgentOrchestrationService {
     }
 
     private List<String> supportedTools() {
-        return List.of(TOOL_TIME_NOW, TOOL_WORKSPACE_METRICS, TOOL_CONVERSATION_DIGEST);
+        return toolRegistry.names();
+    }
+
+    private int resolveToolTimeoutMs(Map<String, Object> metadata) {
+        int timeoutMs = readPositiveInt(metadata, METADATA_TOOL_TIMEOUT_MS, DEFAULT_TOOL_TIMEOUT_MS);
+        return Math.min(Math.max(timeoutMs, 200), MAX_TOOL_TIMEOUT_MS);
+    }
+
+    private int resolveToolMaxRetries(Map<String, Object> metadata) {
+        int retries = readPositiveInt(metadata, METADATA_TOOL_MAX_RETRIES, DEFAULT_TOOL_MAX_RETRIES);
+        return Math.min(Math.max(retries, 0), MAX_TOOL_MAX_RETRIES);
+    }
+
+    private int readPositiveInt(Map<String, Object> metadata, String key, int defaultValue) {
+        if (metadata == null || !metadata.containsKey(key)) {
+            return defaultValue;
+        }
+        Object value = metadata.get(key);
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value instanceof String text && hasText(text)) {
+            try {
+                return Integer.parseInt(text.trim());
+            } catch (NumberFormatException ignored) {
+                return defaultValue;
+            }
+        }
+        return defaultValue;
     }
 
     private String buildPlannerPrompt(String userInput, List<String> allowedTools, int maxSteps) {
