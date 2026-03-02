@@ -4,7 +4,7 @@
 
 ## 文档导航
 
-- `docs/项目完整规划与里程碑.md`：M1-M12 完整规划与当前状态
+- `docs/项目完整规划与里程碑.md`：M1-M13 完整规划与当前状态
 - `docs/M1-工程骨架交付说明.md`：M1 详细交付内容
 - `docs/M3-网关基础能力交付说明.md`：M3 详细交付内容
 - `docs/M4-AI调用层交付说明.md`：M4 详细交付内容
@@ -19,6 +19,7 @@
 - `docs/M10-容器化与CI交付说明.md`：Docker/Compose 本地一键启动与 GitHub Actions CI 交付
 - `docs/M11-部署与发布交付说明.md`：生产部署、镜像发布、回滚与运行手册
 - `docs/M12-可观测与运维加固交付说明.md`：Prometheus/Grafana 观测栈与运维脚本
+- `docs/M13-Agent编排最小闭环交付说明.md`：Agent 最小闭环（Plan/Act/Observe/Respond）
 - `docs/多厂商AI使用指南.md`：多厂商接入与路由使用指南
 - `docs/产品不足与增强路线.md`：当前产品不足与可增强路线
 - `docs/启动问题排查记录.md`：启动问题排查沉淀
@@ -70,6 +71,7 @@
 | M10 | 生产交付（容器化 + CI） | 1 天 | `completed` |
 | M11 | 部署与发布（prod 编排 + 镜像发布 + 运行手册） | 1 天 | `completed` |
 | M12 | 可观测与运维加固（Prometheus + Grafana） | 1 天 | `completed` |
+| M13 | Agent 编排最小闭环（Plan/Act/Observe） | 1 天 | `completed` |
 
 ## M1 验收清单
 
@@ -220,6 +222,15 @@
 - [x] 新增观测脚本：`m12_obs_up/down/smoke`
 - [x] 新增 M12 交付文档（`docs/M12-可观测与运维加固交付说明.md`）
 
+## M13 验收清单
+
+- [x] 新增 Agent 编排服务：`AgentOrchestrationService`
+- [x] 新增 Agent 会话接口：`POST /api/v1/conversations/{id}/agent/run`
+- [x] 支持最小工具链：`time_now` / `workspace_metrics_overview` / `conversation_digest`
+- [x] 支持计划-执行-观察-回答闭环（Plan/Act/Observe/Respond）
+- [x] 新增 M13 冒烟脚本：`scripts/m13_smoke.sh`
+- [x] 新增 M13 交付文档（`docs/M13-Agent编排最小闭环交付说明.md`）
+
 ## 当前目录结构（M1）
 
 ```text
@@ -362,6 +373,12 @@ M12 观测下线（仅观测组件）：
 ./scripts/m12_obs_down.sh
 ```
 
+M13 Agent 闭环冒烟：
+
+```bash
+./scripts/m13_smoke.sh
+```
+
 ## 更新规则
 
 - 每次里程碑状态只使用：`pending` / `in_progress` / `completed`。
@@ -498,3 +515,11 @@ M12 观测下线（仅观测组件）：
 - 完成 Grafana 数据源与看板预置。
 - 完成观测运维脚本：`scripts/m12_obs_up.sh`、`scripts/m12_obs_down.sh`、`scripts/m12_obs_smoke.sh`。
 - 完成 M12 交付文档：`docs/M12-可观测与运维加固交付说明.md`。
+
+### M13（完成时间：2026-03-01）
+
+- 完成 Agent 最小编排闭环（Plan/Act/Observe/Respond）。
+- 完成最小工具集：时间查询、工作区运营指标摘要、会话历史摘要。
+- 完成会话内 Agent API：`POST /api/v1/conversations/{id}/agent/run`。
+- 完成 M13 冒烟脚本：`scripts/m13_smoke.sh`。
+- 完成 M13 交付文档：`docs/M13-Agent编排最小闭环交付说明.md`。

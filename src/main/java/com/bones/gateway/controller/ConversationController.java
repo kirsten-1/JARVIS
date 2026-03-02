@@ -1,6 +1,8 @@
 package com.bones.gateway.controller;
 
 import com.bones.gateway.common.ApiResponse;
+import com.bones.gateway.dto.AgentRunRequest;
+import com.bones.gateway.dto.AgentRunResponse;
 import com.bones.gateway.dto.AppendMessageRequest;
 import com.bones.gateway.dto.ConversationChatRequest;
 import com.bones.gateway.dto.ConversationChatResponse;
@@ -10,6 +12,7 @@ import com.bones.gateway.dto.MessageItemResponse;
 import com.bones.gateway.dto.PagedResult;
 import com.bones.gateway.dto.StreamSessionSnapshotResponse;
 import com.bones.gateway.security.AccessControlService;
+import com.bones.gateway.service.AgentOrchestrationService;
 import com.bones.gateway.service.ChatService;
 import com.bones.gateway.service.ConversationService;
 import com.bones.gateway.service.MessageService;
@@ -36,15 +39,18 @@ public class ConversationController {
     private final ConversationService conversationService;
     private final MessageService messageService;
     private final ChatService chatService;
+    private final AgentOrchestrationService agentOrchestrationService;
     private final AccessControlService accessControlService;
 
     public ConversationController(ConversationService conversationService,
                                   MessageService messageService,
                                   ChatService chatService,
+                                  AgentOrchestrationService agentOrchestrationService,
                                   AccessControlService accessControlService) {
         this.conversationService = conversationService;
         this.messageService = messageService;
         this.chatService = chatService;
+        this.agentOrchestrationService = agentOrchestrationService;
         this.accessControlService = accessControlService;
     }
 
@@ -105,6 +111,21 @@ public class ConversationController {
                 request.message(),
                 request.provider(),
                 request.model(),
+                request.metadata()
+        )));
+    }
+
+    @PostMapping("/{conversationId}/agent/run")
+    public ApiResponse<AgentRunResponse> runAgent(
+            @PathVariable("conversationId") Long conversationId,
+            @Valid @RequestBody AgentRunRequest request) {
+        Long userId = accessControlService.resolveUserId(request.userId());
+        return ApiResponse.success(agentOrchestrationService.run(conversationId, new AgentRunRequest(
+                userId,
+                request.message(),
+                request.provider(),
+                request.model(),
+                request.maxSteps(),
                 request.metadata()
         )));
     }
