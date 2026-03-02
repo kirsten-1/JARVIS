@@ -18,6 +18,8 @@ import com.bones.gateway.integration.ai.model.AiToolCall;
 import com.bones.gateway.service.agent.AgentTool;
 import com.bones.gateway.service.agent.AgentToolContext;
 import com.bones.gateway.service.agent.AgentToolIdempotencyService;
+import com.bones.gateway.service.agent.AgentToolPolicyCenter;
+import com.bones.gateway.service.agent.AgentToolPolicyCenter.ToolExecutionPolicy;
 import com.bones.gateway.service.agent.AgentToolRegistry;
 import com.bones.gateway.service.agent.ConversationDigestAgentTool;
 import com.bones.gateway.service.agent.TimeNowAgentTool;
@@ -51,10 +53,7 @@ public class AgentOrchestrationService {
     private static final String PLANNER_MODE_FUNCTION_CALLING = "function_calling";
     private static final String METADATA_PLANNER_MODE = "plannerMode";
     private static final String METADATA_ALLOWED_TOOLS = "allowedTools";
-    private static final String METADATA_TOOL_TIMEOUT_MS = "toolTimeoutMs";
-    private static final String METADATA_TOOL_MAX_RETRIES = "toolMaxRetries";
     private static final String METADATA_TOOL_IDEMPOTENCY_KEY = "toolIdempotencyKey";
-    private static final String METADATA_TOOL_IDEMPOTENCY_TTL_SECONDS = "toolIdempotencyTtlSeconds";
     private static final String METADATA_FC_MAX_ROUNDS = "functionCallingMaxRounds";
 
     private static final String META_OPENAI_TOOLS = "openaiTools";
@@ -63,13 +62,7 @@ public class AgentOrchestrationService {
     private static final String META_OPENAI_RESPONSE_FORMAT = "openaiResponseFormat";
 
     private static final int DEFAULT_MAX_STEPS = 3;
-    private static final int DEFAULT_TOOL_TIMEOUT_MS = 2000;
-    private static final int DEFAULT_TOOL_MAX_RETRIES = 0;
-    private static final int DEFAULT_TOOL_IDEMPOTENCY_TTL_SECONDS = 1800;
     private static final int DEFAULT_FC_MAX_ROUNDS = 2;
-    private static final int MAX_TOOL_TIMEOUT_MS = 15000;
-    private static final int MAX_TOOL_MAX_RETRIES = 2;
-    private static final int MAX_TOOL_IDEMPOTENCY_TTL_SECONDS = 86400;
     private static final int MAX_FC_MAX_ROUNDS = 4;
     private static final int MAX_PROMPT_STEP_OUTPUT_CHARS = 1200;
     private static final int MAX_PLANNER_RESPONSE_CHARS = 2000;
@@ -84,6 +77,7 @@ public class AgentOrchestrationService {
     private final OpsMetricsService opsMetricsService;
     private final AgentToolRegistry toolRegistry;
     private final AgentToolIdempotencyService agentToolIdempotencyService;
+    private final AgentToolPolicyCenter agentToolPolicyCenter;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AgentOrchestrationService(ConversationService conversationService,
@@ -95,7 +89,8 @@ public class AgentOrchestrationService {
                                      TokenEstimator tokenEstimator,
                                      OpsMetricsService opsMetricsService,
                                      AgentToolRegistry toolRegistry,
-                                     AgentToolIdempotencyService agentToolIdempotencyService) {
+                                     AgentToolIdempotencyService agentToolIdempotencyService,
+                                     AgentToolPolicyCenter agentToolPolicyCenter) {
         this.conversationService = conversationService;
         this.messageService = messageService;
         this.conversationContextService = conversationContextService;
@@ -106,6 +101,7 @@ public class AgentOrchestrationService {
         this.opsMetricsService = opsMetricsService;
         this.toolRegistry = toolRegistry;
         this.agentToolIdempotencyService = agentToolIdempotencyService;
+        this.agentToolPolicyCenter = agentToolPolicyCenter;
     }
 
     public AgentRunResponse run(Long conversationId, AgentRunRequest request) {
@@ -244,10 +240,7 @@ public class AgentOrchestrationService {
                                                   Long userId,
                                                   Long workspaceId,
                                                   Map<String, Object> metadata) {
-        int timeoutMs = resolveToolTimeoutMs(metadata);
-        int maxRetries = resolveToolMaxRetries(metadata);
         String idempotencyKey = resolveToolIdempotencyKey(metadata);
-        int idempotencyTtlSeconds = resolveToolIdempotencyTtlSeconds(metadata);
         List<AgentStepResult> result = new ArrayList<>();
         for (int i = 0; i < plannedTools.size(); i++) {
             result.add(executeToolStep(
@@ -260,10 +253,7 @@ public class AgentOrchestrationService {
                     userId,
                     workspaceId,
                     metadata,
-                    timeoutMs,
-                    maxRetries,
-                    idempotencyKey,
-                    idempotencyTtlSeconds
+                    idempotencyKey
             ));
         }
         return result;
@@ -278,10 +268,7 @@ public class AgentOrchestrationService {
                                                                    String model,
                                                                    Map<String, Object> metadata,
                                                                    List<String> allowedTools) {
-        int timeoutMs = resolveToolTimeoutMs(metadata);
-        int maxRetries = resolveToolMaxRetries(metadata);
         String idempotencyKey = resolveToolIdempotencyKey(metadata);
-        int idempotencyTtlSeconds = resolveToolIdempotencyTtlSeconds(metadata);
         int maxRounds = resolveFunctionCallingMaxRounds(metadata);
         int safeMaxSteps = Math.max(1, Math.min(maxSteps, 6));
         List<AgentStepResult> results = new ArrayList<>();
@@ -321,10 +308,7 @@ public class AgentOrchestrationService {
                     userId,
                     workspaceId,
                     metadata,
-                    timeoutMs,
-                    maxRetries,
                     idempotencyKey,
-                    idempotencyTtlSeconds,
                     results.size() + 1
             );
             if (roundSteps.isEmpty()) {
@@ -341,10 +325,7 @@ public class AgentOrchestrationService {
                                                    Long userId,
                                                    Long workspaceId,
                                                    Map<String, Object> metadata,
-                                                   int timeoutMs,
-                                                   int maxRetries,
                                                    String idempotencyKey,
-                                                   int idempotencyTtlSeconds,
                                                    int startIndex) {
         List<AgentStepResult> results = new ArrayList<>();
         int index = startIndex;
@@ -360,10 +341,7 @@ public class AgentOrchestrationService {
                     userId,
                     workspaceId,
                     metadata,
-                    timeoutMs,
-                    maxRetries,
-                    idempotencyKey,
-                    idempotencyTtlSeconds
+                    idempotencyKey
             );
             results.add(step);
             index++;
@@ -380,10 +358,7 @@ public class AgentOrchestrationService {
                                             Long userId,
                                             Long workspaceId,
                                             Map<String, Object> metadata,
-                                            int timeoutMs,
-                                            int maxRetries,
-                                            String idempotencyKey,
-                                            int idempotencyTtlSeconds) {
+                                            String idempotencyKey) {
         long startedAt = System.nanoTime();
         AgentTool tool = toolRegistry.get(toolName).orElse(null);
         if (tool == null) {
@@ -407,6 +382,19 @@ public class AgentOrchestrationService {
                 toolCallId,
                 toolArguments == null ? Map.of() : toolArguments
         );
+        ToolExecutionPolicy policy = agentToolPolicyCenter.resolve(toolName, metadata);
+        if (!policy.enabled()) {
+            long durationMs = (System.nanoTime() - startedAt) / 1_000_000;
+            return new AgentStepResult(
+                    index,
+                    toolName,
+                    "skipped",
+                    safeToolInput(requestedInput),
+                    "tool disabled by policy center",
+                    durationMs,
+                    toolCallId
+            );
+        }
         String toolInput = hasText(requestedInput) ? truncate(requestedInput, MAX_PROMPT_STEP_OUTPUT_CHARS) : safeBuildToolInput(tool, context);
         AgentToolIdempotencyService.Lookup lookup = new AgentToolIdempotencyService.Lookup(
                 idempotencyKey,
@@ -416,7 +404,7 @@ public class AgentOrchestrationService {
                 toolName,
                 toolInput
         );
-        if (hasText(idempotencyKey)) {
+        if (hasText(idempotencyKey) && policy.idempotencyEnabled()) {
             AgentToolIdempotencyService.CachedToolResult cached = agentToolIdempotencyService.find(lookup).orElse(null);
             if (cached != null) {
                 return new AgentStepResult(
@@ -431,32 +419,37 @@ public class AgentOrchestrationService {
             }
         }
         try {
-            String toolOutput = executeToolWithPolicy(tool, context, timeoutMs, maxRetries);
+            String toolOutput = executeToolWithPolicy(tool, context, policy.timeoutMs(), policy.maxRetries());
+            String normalizedOutput = truncate(toolOutput, MAX_PROMPT_STEP_OUTPUT_CHARS);
+            if (hasText(idempotencyKey) && policy.idempotencyEnabled()) {
+                agentToolIdempotencyService.save(
+                        lookup,
+                        new AgentToolIdempotencyService.CachedToolResult(
+                                "success",
+                                toolInput,
+                                normalizedOutput,
+                                toolCallId
+                        ),
+                        policy.idempotencyTtlSeconds()
+                );
+            }
             long durationMs = (System.nanoTime() - startedAt) / 1_000_000;
-            agentToolIdempotencyService.save(
-                    lookup,
-                    new AgentToolIdempotencyService.CachedToolResult(
-                            "success",
-                            toolInput,
-                            truncate(toolOutput, MAX_PROMPT_STEP_OUTPUT_CHARS),
-                            toolCallId
-                    ),
-                    idempotencyTtlSeconds
-            );
             return new AgentStepResult(index, toolName, "success", toolInput, toolOutput, durationMs, toolCallId);
         } catch (RuntimeException ex) {
             long durationMs = (System.nanoTime() - startedAt) / 1_000_000;
             String failedOutput = truncate("tool execution failed: " + ex.getMessage(), MAX_PROMPT_STEP_OUTPUT_CHARS);
-            agentToolIdempotencyService.save(
-                    lookup,
-                    new AgentToolIdempotencyService.CachedToolResult(
-                            "failed",
-                            toolInput,
-                            failedOutput,
-                            toolCallId
-                    ),
-                    idempotencyTtlSeconds
-            );
+            if (hasText(idempotencyKey) && policy.idempotencyEnabled()) {
+                agentToolIdempotencyService.save(
+                        lookup,
+                        new AgentToolIdempotencyService.CachedToolResult(
+                                "failed",
+                                toolInput,
+                                failedOutput,
+                                toolCallId
+                        ),
+                        policy.idempotencyTtlSeconds()
+                );
+            }
             return new AgentStepResult(
                     index,
                     toolName,
@@ -815,16 +808,6 @@ public class AgentOrchestrationService {
         return toolRegistry.names();
     }
 
-    private int resolveToolTimeoutMs(Map<String, Object> metadata) {
-        int timeoutMs = readPositiveInt(metadata, METADATA_TOOL_TIMEOUT_MS, DEFAULT_TOOL_TIMEOUT_MS);
-        return Math.min(Math.max(timeoutMs, 200), MAX_TOOL_TIMEOUT_MS);
-    }
-
-    private int resolveToolMaxRetries(Map<String, Object> metadata) {
-        int retries = readPositiveInt(metadata, METADATA_TOOL_MAX_RETRIES, DEFAULT_TOOL_MAX_RETRIES);
-        return Math.min(Math.max(retries, 0), MAX_TOOL_MAX_RETRIES);
-    }
-
     private String resolveToolIdempotencyKey(Map<String, Object> metadata) {
         if (metadata == null) {
             return null;
@@ -834,11 +817,6 @@ public class AgentOrchestrationService {
             return text.trim();
         }
         return null;
-    }
-
-    private int resolveToolIdempotencyTtlSeconds(Map<String, Object> metadata) {
-        int ttl = readPositiveInt(metadata, METADATA_TOOL_IDEMPOTENCY_TTL_SECONDS, DEFAULT_TOOL_IDEMPOTENCY_TTL_SECONDS);
-        return Math.min(Math.max(ttl, 60), MAX_TOOL_IDEMPOTENCY_TTL_SECONDS);
     }
 
     private int resolveFunctionCallingMaxRounds(Map<String, Object> metadata) {

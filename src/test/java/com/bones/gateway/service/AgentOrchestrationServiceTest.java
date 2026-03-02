@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -30,6 +31,7 @@ import com.bones.gateway.integration.ai.model.AiChatResponse;
 import com.bones.gateway.integration.ai.model.AiToolCall;
 import com.bones.gateway.service.BillingService.BillingUsage;
 import com.bones.gateway.service.agent.AgentToolIdempotencyService;
+import com.bones.gateway.service.agent.AgentToolPolicyCenter;
 import com.bones.gateway.service.agent.AgentToolRegistry;
 import com.bones.gateway.service.agent.ConversationDigestAgentTool;
 import com.bones.gateway.service.agent.TimeNowAgentTool;
@@ -70,6 +72,8 @@ class AgentOrchestrationServiceTest {
     private OpsMetricsService opsMetricsService;
     @Mock
     private AgentToolIdempotencyService agentToolIdempotencyService;
+    @Mock
+    private AgentToolPolicyCenter agentToolPolicyCenter;
 
     private AgentOrchestrationService agentOrchestrationService;
     private AgentToolRegistry agentToolRegistry;
@@ -91,9 +95,28 @@ class AgentOrchestrationServiceTest {
                 tokenEstimator,
                 opsMetricsService,
                 agentToolRegistry,
-                agentToolIdempotencyService
+                agentToolIdempotencyService,
+                agentToolPolicyCenter
         );
         lenient().when(agentToolIdempotencyService.find(any())).thenReturn(Optional.empty());
+        lenient().when(agentToolPolicyCenter.resolve(anyString(), any()))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> metadata = (Map<String, Object>) invocation.getArgument(1);
+                    int timeout = 2000;
+                    int retries = 0;
+                    if (metadata != null) {
+                        Object timeoutValue = metadata.get("toolTimeoutMs");
+                        if (timeoutValue instanceof Number number) {
+                            timeout = number.intValue();
+                        }
+                        Object retriesValue = metadata.get("toolMaxRetries");
+                        if (retriesValue instanceof Number number) {
+                            retries = number.intValue();
+                        }
+                    }
+                    return new AgentToolPolicyCenter.ToolExecutionPolicy(true, timeout, retries, true, 1800);
+                });
     }
 
     @Test
@@ -395,6 +418,52 @@ class AgentOrchestrationServiceTest {
         verify(opsMetricsService, times(1)).getOverview(eq(1L), eq(null), eq(null));
         verify(agentToolIdempotencyService, times(2)).find(any());
         verify(agentToolIdempotencyService, times(1)).save(any(), any(), anyInt());
+    }
+
+    @Test
+    void run_shouldSkipToolWhenPolicyCenterDisablesTool() {
+        Conversation conversation = Conversation.builder()
+                .id(16L)
+                .userId(1001L)
+                .workspaceId(1L)
+                .title("新会话")
+                .status(ConversationStatus.ACTIVE)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+
+        when(conversationService.getUserConversation(16L, 1001L)).thenReturn(conversation);
+        when(conversationContextService.buildPromptMessages(eq(16L), any()))
+                .thenReturn(List.of(new AiChatMessage("system", "ctx")));
+        when(messageService.saveMessage(eq(16L), eq(MessageRole.USER), any(), eq(null)))
+                .thenReturn(Message.builder().id(601L).conversationId(16L).role(MessageRole.USER).content("q").build());
+        when(messageService.saveMessage(eq(16L), eq(MessageRole.ASSISTANT), any(), eq(null)))
+                .thenReturn(Message.builder().id(602L).conversationId(16L).role(MessageRole.ASSISTANT).content("a").build());
+        when(aiServiceClient.chat(any(AiChatRequest.class)))
+                .thenReturn(Mono.just(new AiChatResponse("answer with no metrics", "glm-4.6v-flashx", "stop")));
+        when(tokenEstimator.estimateMessagesTokens(any())).thenReturn(18);
+        when(tokenEstimator.estimateTextTokens(any())).thenReturn(9);
+        when(billingService.recordUsage(eq(1001L), eq(1L), any(), any(), anyInt(), anyInt(), anyInt(), any()))
+                .thenReturn(new BillingUsage(18, 9, 0.001));
+        when(agentToolPolicyCenter.resolve(eq("workspace_metrics_overview"), any()))
+                .thenReturn(new AgentToolPolicyCenter.ToolExecutionPolicy(false, 2000, 0, true, 1800));
+
+        AgentRunResponse response = agentOrchestrationService.run(
+                16L,
+                new AgentRunRequest(
+                        1001L,
+                        "请给出工作区运营指标",
+                        "glm",
+                        "glm-4.6v-flashx",
+                        3,
+                        Map.of("toolIdempotencyKey", "policy-disabled-demo")
+                )
+        );
+
+        assertEquals(1, response.steps().size());
+        assertEquals("workspace_metrics_overview", response.steps().get(0).tool());
+        assertEquals("skipped", response.steps().get(0).status());
+        verify(opsMetricsService, never()).getOverview(eq(1L), eq(null), eq(null));
     }
 
     @Test

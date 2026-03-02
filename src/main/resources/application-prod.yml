@@ -71,6 +71,14 @@ jarvis:
     message-list-ttl-seconds: ${JARVIS_CACHE_MESSAGE_LIST_TTL_SECONDS:60}
     hot-response-enabled: ${JARVIS_CACHE_HOT_RESPONSE_ENABLED:true}
     hot-response-ttl-seconds: ${JARVIS_CACHE_HOT_RESPONSE_TTL_SECONDS:45}
+  agent:
+    tool-policy:
+      enabled: ${JARVIS_AGENT_TOOL_POLICY_ENABLED:true}
+      default-timeout-ms: ${JARVIS_AGENT_TOOL_POLICY_DEFAULT_TIMEOUT_MS:2000}
+      default-max-retries: ${JARVIS_AGENT_TOOL_POLICY_DEFAULT_MAX_RETRIES:0}
+      default-idempotency-enabled: ${JARVIS_AGENT_TOOL_POLICY_DEFAULT_IDEMPOTENCY_ENABLED:true}
+      default-idempotency-ttl-seconds: ${JARVIS_AGENT_TOOL_POLICY_DEFAULT_IDEMPOTENCY_TTL_SECONDS:1800}
+      default-tool-enabled: ${JARVIS_AGENT_TOOL_POLICY_DEFAULT_TOOL_ENABLED:true}
   ai:
     default-provider: ${AI_DEFAULT_PROVIDER:local}
     fallback-enabled: ${AI_FALLBACK_ENABLED:false}

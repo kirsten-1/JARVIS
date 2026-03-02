@@ -73,7 +73,7 @@
 | M11 | 部署与发布（prod 编排 + 镜像发布 + 运行手册） | 1 天 | `completed` |
 | M12 | 可观测与运维加固（Prometheus + Grafana） | 1 天 | `completed` |
 | M13 | Agent 编排最小闭环（Plan/Act/Observe） | 1 天 | `completed` |
-| M14 | Agent 编排增强（LLM Planner + Tool Allowlist） | 1 天 | `in_progress` |
+| M14 | Agent 编排增强（LLM Planner + Tool Allowlist） | 1 天 | `completed` |
 
 ## M1 验收清单
 
@@ -233,7 +233,7 @@
 - [x] 新增 M13 冒烟脚本：`scripts/m13_smoke.sh`
 - [x] 新增 M13 交付文档（`docs/M13-Agent编排最小闭环交付说明.md`）
 
-## M14 验收清单（进行中）
+## M14 验收清单（已完成）
 
 - [x] Agent 增加规划模式：`rule`（默认）/`llm_json`
 - [x] Agent 增加工具白名单治理：`metadata.allowedTools`
@@ -243,7 +243,7 @@
 - [x] 增加工具级超时/重试策略（`toolTimeoutMs`/`toolMaxRetries`）
 - [x] 增加原生 Function Calling 协议编排与审计
 - [x] 增加工具级幂等键（`toolIdempotencyKey` + TTL）
-- [ ] 增加工具级策略中心（集中策略编排/降级配额）
+- [x] 增加工具级策略中心（集中策略解析与执行治理）
 
 ## 当前目录结构（M1）
 

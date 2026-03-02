@@ -9,7 +9,8 @@ import org.springframework.context.annotation.Configuration;
         ConversationContextProperties.class,
         BillingProperties.class,
         StreamSessionProperties.class,
-        M6CacheProperties.class
+        M6CacheProperties.class,
+        AgentToolPolicyProperties.class
 })
 public class AppPropertiesConfig {
 }
