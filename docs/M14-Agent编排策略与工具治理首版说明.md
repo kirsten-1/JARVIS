@@ -24,6 +24,10 @@
   - 支持 `metadata.toolTimeoutMs`（默认 2000ms，最大 15000ms）。
   - 支持 `metadata.toolMaxRetries`（默认 0，最大 2）。
   - 单步超时或异常不会中断主流程，步骤会记为 `failed` 并继续生成最终回答。
+- 新增工具幂等键：
+  - 支持 `metadata.toolIdempotencyKey`（同 key + 同工具 + 同输入时复用执行结果）。
+  - 支持 `metadata.toolIdempotencyTtlSeconds`（默认 1800，最大 86400）。
+  - 命中缓存时步骤状态记为 `deduplicated`，避免重复副作用调用。
 - 新增安全兜底：
   - LLM 规划 JSON 解析失败时，自动回退到 `rule` 规划，不中断主流程。
   - Function Calling 未返回工具调用时，自动回退到规则规划，不中断主流程。
@@ -75,6 +79,8 @@
     "allowedTools": ["time_now", "conversation_digest"],
     "toolTimeoutMs": 3000,
     "toolMaxRetries": 1,
+    "toolIdempotencyKey": "order-20260303-1001",
+    "toolIdempotencyTtlSeconds": 1800,
     "functionCallingMaxRounds": 2
   }
 }
@@ -84,9 +90,9 @@
 
 - 工具执行目前仍是串行模型，尚未支持并行任务图调度。
 - 审计仍为请求级 metadata 聚合，尚未下沉到独立审计中心与持久化检索。
-- 幂等键、降级策略、工具配额尚未接入。
+- 降级策略、工具配额、策略中心尚未接入。
 
 ## 5. 下一步（M14 后续）
 
 - 工具审计中心（独立存储 + 查询接口 + 风险告警）。
-- 工具级 SLA 控制（超时、重试、降级、幂等键）。
+- 工具级策略中心（超时、重试、降级、配额统一治理）。

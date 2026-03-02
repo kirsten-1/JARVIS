@@ -242,7 +242,8 @@
 - [x] 增加工具注册中心（可插拔工具 SPI）
 - [x] 增加工具级超时/重试策略（`toolTimeoutMs`/`toolMaxRetries`）
 - [x] 增加原生 Function Calling 协议编排与审计
-- [ ] 增加工具级幂等与策略中心
+- [x] 增加工具级幂等键（`toolIdempotencyKey` + TTL）
+- [ ] 增加工具级策略中心（集中策略编排/降级配额）
 
 ## 当前目录结构（M1）
 

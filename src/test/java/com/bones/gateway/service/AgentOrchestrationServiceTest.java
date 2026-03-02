@@ -4,12 +4,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.lenient;
 
 import com.bones.gateway.common.BusinessException;
 import com.bones.gateway.common.ErrorCode;
@@ -27,6 +29,7 @@ import com.bones.gateway.integration.ai.model.AiChatRequest;
 import com.bones.gateway.integration.ai.model.AiChatResponse;
 import com.bones.gateway.integration.ai.model.AiToolCall;
 import com.bones.gateway.service.BillingService.BillingUsage;
+import com.bones.gateway.service.agent.AgentToolIdempotencyService;
 import com.bones.gateway.service.agent.AgentToolRegistry;
 import com.bones.gateway.service.agent.ConversationDigestAgentTool;
 import com.bones.gateway.service.agent.TimeNowAgentTool;
@@ -35,6 +38,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -64,6 +68,8 @@ class AgentOrchestrationServiceTest {
     private TokenEstimator tokenEstimator;
     @Mock
     private OpsMetricsService opsMetricsService;
+    @Mock
+    private AgentToolIdempotencyService agentToolIdempotencyService;
 
     private AgentOrchestrationService agentOrchestrationService;
     private AgentToolRegistry agentToolRegistry;
@@ -84,8 +90,10 @@ class AgentOrchestrationServiceTest {
                 billingService,
                 tokenEstimator,
                 opsMetricsService,
-                agentToolRegistry
+                agentToolRegistry,
+                agentToolIdempotencyService
         );
+        lenient().when(agentToolIdempotencyService.find(any())).thenReturn(Optional.empty());
     }
 
     @Test
@@ -317,6 +325,76 @@ class AgentOrchestrationServiceTest {
                         && request.metadata().containsKey("openaiToolChoice");
             }
         }));
+    }
+
+    @Test
+    void run_shouldReuseCachedToolResultWhenIdempotencyKeyProvided() {
+        Conversation conversation = Conversation.builder()
+                .id(15L)
+                .userId(1001L)
+                .workspaceId(1L)
+                .title("新会话")
+                .status(ConversationStatus.ACTIVE)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+
+        when(conversationService.getUserConversation(15L, 1001L)).thenReturn(conversation);
+        when(conversationContextService.buildPromptMessages(eq(15L), any()))
+                .thenReturn(List.of(new AiChatMessage("system", "ctx")));
+        when(messageService.saveMessage(eq(15L), eq(MessageRole.USER), any(), eq(null)))
+                .thenReturn(Message.builder().id(501L).conversationId(15L).role(MessageRole.USER).content("q").build());
+        when(messageService.saveMessage(eq(15L), eq(MessageRole.ASSISTANT), any(), eq(null)))
+                .thenReturn(Message.builder().id(502L).conversationId(15L).role(MessageRole.ASSISTANT).content("a").build());
+        when(aiServiceClient.chat(any(AiChatRequest.class)))
+                .thenReturn(Mono.just(new AiChatResponse("first answer", "glm-4.6v-flashx", "stop")))
+                .thenReturn(Mono.just(new AiChatResponse("second answer", "glm-4.6v-flashx", "stop")));
+        when(tokenEstimator.estimateMessagesTokens(any())).thenReturn(20);
+        when(tokenEstimator.estimateTextTokens(any())).thenReturn(10);
+        when(billingService.recordUsage(eq(1001L), eq(1L), any(), any(), anyInt(), anyInt(), anyInt(), any()))
+                .thenReturn(new BillingUsage(20, 10, 0.001));
+        when(opsMetricsService.getOverview(eq(1L), eq(null), eq(null)))
+                .thenReturn(new MetricsOverviewResponse(
+                        1L,
+                        LocalDate.now().minusDays(6),
+                        LocalDate.now(),
+                        8,
+                        7,
+                        1,
+                        0.875,
+                        2,
+                        0.25,
+                        280.0,
+                        620.0,
+                        900.0,
+                        List.of()
+                ));
+        when(agentToolIdempotencyService.find(any()))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(new AgentToolIdempotencyService.CachedToolResult(
+                        "success",
+                        "{\"workspaceId\":1,\"range\":\"last_7_days\"}",
+                        "workspaceId=1, totalRequests=8, successRate=0.875, fallbackRate=0.25, ttftP50Ms=280.0, ttftP90Ms=620.0",
+                        null
+                )));
+
+        AgentRunRequest request = new AgentRunRequest(
+                1001L,
+                "请给我工作区运营指标",
+                "glm",
+                "glm-4.6v-flashx",
+                3,
+                Map.of("toolIdempotencyKey", "demo-key-001")
+        );
+
+        AgentRunResponse first = agentOrchestrationService.run(15L, request);
+        AgentRunResponse second = agentOrchestrationService.run(15L, request);
+
+        assertEquals("success", first.steps().get(0).status());
+        assertEquals("deduplicated", second.steps().get(0).status());
+        verify(opsMetricsService, times(1)).getOverview(eq(1L), eq(null), eq(null));
+        verify(agentToolIdempotencyService, times(2)).find(any());
+        verify(agentToolIdempotencyService, times(1)).save(any(), any(), anyInt());
     }
 
     @Test
