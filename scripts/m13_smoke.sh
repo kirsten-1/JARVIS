@@ -13,8 +13,21 @@ PROVIDER="${PROVIDER:-glm}"
 MODEL="${MODEL:-glm-4.6v-flashx}"
 MESSAGE="${MESSAGE:-请告诉我现在时间，并给出当前工作区运营指标摘要。}"
 TOKEN="${TOKEN:-}"
+JARVIS_JWT_SECRET="${JARVIS_JWT_SECRET:-}"
+JARVIS_JWT_ISSUER="${JARVIS_JWT_ISSUER:-jarvis-gateway}"
+JARVIS_JWT_EXPIRE_SECONDS="${JARVIS_JWT_EXPIRE_SECONDS:-86400}"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "[M13-SMOKE] BASE_URL=${BASE_URL}"
+
+if [[ -z "${TOKEN}" && -z "${JARVIS_JWT_SECRET}" && -f "${ROOT_DIR}/.env.prod" ]]; then
+  set -a
+  . "${ROOT_DIR}/.env.prod"
+  set +a
+  JARVIS_JWT_SECRET="${JARVIS_JWT_SECRET:-}"
+  JARVIS_JWT_ISSUER="${JARVIS_JWT_ISSUER:-jarvis-gateway}"
+  JARVIS_JWT_EXPIRE_SECONDS="${JARVIS_JWT_EXPIRE_SECONDS:-86400}"
+fi
 
 echo "[1/5] health check"
 curl -fsS "${BASE_URL}/actuator/health" >/dev/null
@@ -22,6 +35,28 @@ curl -fsS "${BASE_URL}/actuator/health" >/dev/null
 echo "[2/5] resolve token"
 if [[ -n "${TOKEN}" ]]; then
   echo "[M13-SMOKE] using provided TOKEN"
+elif [[ -n "${JARVIS_JWT_SECRET}" ]]; then
+  if ! command -v openssl >/dev/null 2>&1; then
+    echo "[M13-SMOKE] openssl is required to sign local jwt when JARVIS_JWT_SECRET is set"
+    exit 1
+  fi
+  echo "[M13-SMOKE] generating local jwt from JARVIS_JWT_SECRET"
+  base64url() {
+    openssl base64 -A | tr '+/' '-_' | tr -d '='
+  }
+  NOW_TS=$(date +%s)
+  EXP_TS=$((NOW_TS + JARVIS_JWT_EXPIRE_SECONDS))
+  JWT_HEADER=$(printf '{"alg":"HS256","typ":"JWT"}' | base64url)
+  JWT_PAYLOAD=$(jq -nc \
+    --arg sub "${USER_ID}" \
+    --arg iss "${JARVIS_JWT_ISSUER}" \
+    --arg role "${ROLE}" \
+    --argjson iat "${NOW_TS}" \
+    --argjson exp "${EXP_TS}" \
+    '{sub:$sub,iss:$iss,iat:$iat,exp:$exp,role:$role}' | base64url)
+  JWT_SIGN_INPUT="${JWT_HEADER}.${JWT_PAYLOAD}"
+  JWT_SIG=$(printf '%s' "${JWT_SIGN_INPUT}" | openssl dgst -binary -sha256 -hmac "${JARVIS_JWT_SECRET}" | base64url)
+  TOKEN="${JWT_SIGN_INPUT}.${JWT_SIG}"
 else
   DEV_TOKEN_RESP_FILE="$(mktemp)"
   HTTP_CODE=$(curl -sS -o "${DEV_TOKEN_RESP_FILE}" -w "%{http_code}" -X POST "${BASE_URL}/api/v1/auth/dev-token" \

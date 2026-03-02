@@ -76,11 +76,13 @@ Content-Type: application/json
 
 预期：输出 `[M13-SMOKE] SUCCESS`。
 
-生产环境（`prod` profile）下 `dev-token` 端点默认不可用，需先提供已有 JWT：
+生产环境（`prod` profile）下 `dev-token` 端点默认不可用：
 
 ```bash
 TOKEN=<your_jwt> ./scripts/m13_smoke.sh
 ```
+
+也可在本机设置 `JARVIS_JWT_SECRET`（或放在 `.env.prod`）后由脚本自动本地签发测试 JWT。
 
 ## 7. 注意事项
 
