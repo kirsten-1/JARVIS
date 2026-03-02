@@ -4,6 +4,7 @@ public enum ErrorCode {
     SUCCESS(0, "success"),
     UNAUTHORIZED(4010, "unauthorized"),
     FORBIDDEN(4030, "forbidden"),
+    RESOURCE_NOT_FOUND(4040, "resource not found"),
     BAD_REQUEST(4000, "bad request"),
     VALIDATION_FAILED(4001, "validation failed"),
     BUSINESS_ERROR(4002, "business error"),

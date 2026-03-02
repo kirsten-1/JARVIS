@@ -12,20 +12,35 @@ ROLE="${ROLE:-USER}"
 PROVIDER="${PROVIDER:-glm}"
 MODEL="${MODEL:-glm-4.6v-flashx}"
 MESSAGE="${MESSAGE:-请告诉我现在时间，并给出当前工作区运营指标摘要。}"
+TOKEN="${TOKEN:-}"
 
 echo "[M13-SMOKE] BASE_URL=${BASE_URL}"
 
 echo "[1/5] health check"
 curl -fsS "${BASE_URL}/actuator/health" >/dev/null
 
-echo "[2/5] issue dev token"
-TOKEN_JSON=$(curl -fsS -X POST "${BASE_URL}/api/v1/auth/dev-token" \
-  -H 'Content-Type: application/json' \
-  -d "{\"userId\":${USER_ID},\"role\":\"${ROLE}\"}")
-TOKEN=$(echo "${TOKEN_JSON}" | jq -r '.data.token')
-if [[ -z "${TOKEN}" || "${TOKEN}" == "null" ]]; then
-  echo "[M13-SMOKE] failed to get token"
-  exit 1
+echo "[2/5] resolve token"
+if [[ -n "${TOKEN}" ]]; then
+  echo "[M13-SMOKE] using provided TOKEN"
+else
+  DEV_TOKEN_RESP_FILE="$(mktemp)"
+  HTTP_CODE=$(curl -sS -o "${DEV_TOKEN_RESP_FILE}" -w "%{http_code}" -X POST "${BASE_URL}/api/v1/auth/dev-token" \
+    -H 'Content-Type: application/json' \
+    -d "{\"userId\":${USER_ID},\"role\":\"${ROLE}\"}" || true)
+  if [[ "${HTTP_CODE}" != "200" ]]; then
+    echo "[M13-SMOKE] dev-token endpoint unavailable (http=${HTTP_CODE})"
+    echo "[M13-SMOKE] for prod profile, rerun with TOKEN env:"
+    echo "TOKEN=<your_jwt> ./scripts/m13_smoke.sh"
+    cat "${DEV_TOKEN_RESP_FILE}"
+    rm -f "${DEV_TOKEN_RESP_FILE}"
+    exit 1
+  fi
+  TOKEN=$(jq -r '.data.token' "${DEV_TOKEN_RESP_FILE}")
+  rm -f "${DEV_TOKEN_RESP_FILE}"
+  if [[ -z "${TOKEN}" || "${TOKEN}" == "null" ]]; then
+    echo "[M13-SMOKE] failed to parse token from dev-token response"
+    exit 1
+  fi
 fi
 
 echo "[3/5] create conversation"

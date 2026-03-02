@@ -76,6 +76,12 @@ Content-Type: application/json
 
 预期：输出 `[M13-SMOKE] SUCCESS`。
 
+生产环境（`prod` profile）下 `dev-token` 端点默认不可用，需先提供已有 JWT：
+
+```bash
+TOKEN=<your_jwt> ./scripts/m13_smoke.sh
+```
+
 ## 7. 注意事项
 
 - 当前 M13 为最小闭环，规划器采用规则策略，不依赖复杂 Planner 模型。
