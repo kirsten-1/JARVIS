@@ -120,15 +120,19 @@ AI_DEFAULT_PROVIDER=glm
 
 ```bash
 AI_MINIMAX_ENABLED=true
-AI_MINIMAX_BASE_URL=https://api.minimax.chat/v1
-AI_MINIMAX_CHAT_PATH=/text/chatcompletion_v2
-AI_MINIMAX_STREAM_PATH=/text/chatcompletion_v2
+AI_MINIMAX_PROTOCOL=ANTHROPIC
+AI_MINIMAX_BASE_URL=https://api.minimaxi.com/anthropic
+AI_MINIMAX_CHAT_PATH=/v1/messages
+AI_MINIMAX_STREAM_PATH=/v1/messages
 AI_MINIMAX_API_KEY=你的Key
-AI_MINIMAX_MODEL=MiniMax-Text-01
+AI_MINIMAX_MODEL=MiniMax-M1
+AI_MINIMAX_API_KEY_HEADER=x-api-key
+AI_MINIMAX_API_KEY_PREFIX=
+AI_MINIMAX_ANTHROPIC_VERSION=2023-06-01
 AI_DEFAULT_PROVIDER=minimax
 ```
 
-说明：MiniMax endpoint 可能随账户/区域变化，必要时改 path。
+说明：上述为 MiniMax Anthropic 兼容网关配置；如你账户网关不同，可调整 `BASE_URL/PATH`。
 
 ## 6. 请求时显式指定厂商
 

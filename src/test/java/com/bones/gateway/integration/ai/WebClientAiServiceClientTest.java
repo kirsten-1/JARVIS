@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
+import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -232,6 +233,64 @@ class WebClientAiServiceClientTest {
             String path = geminiServer.takeRequest().getPath();
             assertTrue(path.startsWith("/v1beta/models/gemini-2.0-flash:generateContent"));
             assertTrue(path.contains("key=gemini-key"));
+        }
+    }
+
+    @Test
+    void chat_shouldParseAnthropicResponse_whenAnthropicProvider() throws Exception {
+        try (MockWebServer anthropicServer = new MockWebServer()) {
+            anthropicServer.start();
+            anthropicServer.enqueue(new MockResponse()
+                    .setResponseCode(200)
+                    .addHeader("Content-Type", "application/json")
+                    .setBody("""
+                            {
+                              "id":"msg_123",
+                              "type":"message",
+                              "model":"MiniMax-M1",
+                              "role":"assistant",
+                              "content":[{"type":"text","text":"hello minimaxi"}],
+                              "stop_reason":"end_turn",
+                              "usage":{"input_tokens":11,"output_tokens":7}
+                            }
+                            """));
+
+            AiServiceProperties properties = new AiServiceProperties();
+            properties.setConnectTimeoutMs(1000);
+            properties.setReadTimeoutMs(5000);
+            properties.setRetryEnabled(false);
+            properties.setMaxRetries(0);
+            properties.setRetryBackoffMs(100);
+            properties.setDefaultProvider("minimax");
+
+            ProviderProperties minimax = new ProviderProperties();
+            minimax.setEnabled(true);
+            minimax.setProtocol(ProviderProtocol.ANTHROPIC);
+            minimax.setBaseUrl(anthropicServer.url("/").toString());
+            minimax.setChatPath("/v1/messages");
+            minimax.setStreamPath("/v1/messages");
+            minimax.setApiKey("minimax-key");
+            minimax.setApiKeyHeader("x-api-key");
+            minimax.setApiKeyPrefix("");
+            minimax.setModel("MiniMax-M1");
+            minimax.setHeaders(Map.of("anthropic-version", "2023-06-01"));
+            properties.setProviders(Map.of("minimax", minimax));
+
+            WebClientAiServiceClient routingClient = createClient(properties);
+            AiChatResponse response = routingClient.chat(new AiChatRequest("hello", 1L, 1L, "minimax", null, null, null)).block();
+
+            assertEquals("hello minimaxi", response.content());
+            assertEquals("MiniMax-M1", response.model());
+            assertEquals("end_turn", response.finishReason());
+            assertEquals(11, response.promptTokens());
+            assertEquals(7, response.completionTokens());
+            assertEquals(18, response.totalTokens());
+
+            RecordedRequest recorded = anthropicServer.takeRequest();
+            assertEquals("/v1/messages", recorded.getPath());
+            assertEquals("minimax-key", recorded.getHeader("x-api-key"));
+            assertEquals("2023-06-01", recorded.getHeader("anthropic-version"));
+            assertTrue(recorded.getBody().readUtf8().contains("\"stream\":false"));
         }
     }
 

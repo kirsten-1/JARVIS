@@ -112,12 +112,16 @@ jarvis:
         model: ${AI_GLM_MODEL:glm-4-plus}
       minimax:
         enabled: ${AI_MINIMAX_ENABLED:false}
-        protocol: OPENAI_COMPATIBLE
-        base-url: ${AI_MINIMAX_BASE_URL:https://api.minimax.chat/v1}
-        chat-path: ${AI_MINIMAX_CHAT_PATH:/text/chatcompletion_v2}
-        stream-path: ${AI_MINIMAX_STREAM_PATH:/text/chatcompletion_v2}
+        protocol: ${AI_MINIMAX_PROTOCOL:ANTHROPIC}
+        base-url: ${AI_MINIMAX_BASE_URL:https://api.minimaxi.com/anthropic}
+        chat-path: ${AI_MINIMAX_CHAT_PATH:/v1/messages}
+        stream-path: ${AI_MINIMAX_STREAM_PATH:/v1/messages}
         api-key: ${AI_MINIMAX_API_KEY:}
-        model: ${AI_MINIMAX_MODEL:MiniMax-Text-01}
+        model: ${AI_MINIMAX_MODEL:MiniMax-M1}
+        api-key-header: ${AI_MINIMAX_API_KEY_HEADER:x-api-key}
+        api-key-prefix: ${AI_MINIMAX_API_KEY_PREFIX:}
+        headers:
+          anthropic-version: ${AI_MINIMAX_ANTHROPIC_VERSION:2023-06-01}
       aliyun:
         enabled: ${AI_ALIYUN_ENABLED:false}
         protocol: OPENAI_COMPATIBLE

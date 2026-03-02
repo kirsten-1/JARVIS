@@ -174,7 +174,8 @@ public class AiServiceProperties {
 
     public enum ProviderProtocol {
         OPENAI_COMPATIBLE,
-        GEMINI
+        GEMINI,
+        ANTHROPIC
     }
 
     public static class ProviderProperties {

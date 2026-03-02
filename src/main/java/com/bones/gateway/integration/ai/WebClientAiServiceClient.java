@@ -99,6 +99,7 @@ public class WebClientAiServiceClient implements AiServiceClient {
         Mono<AiChatResponse> execution = switch (context.provider().getProtocol()) {
             case GEMINI -> doGeminiChat(request, context, traceId, requestId);
             case OPENAI_COMPATIBLE -> doOpenAiCompatibleChat(request, context, traceId, requestId);
+            case ANTHROPIC -> doAnthropicChat(request, context, traceId, requestId);
         };
 
         if (shouldRetry()) {
@@ -131,6 +132,7 @@ public class WebClientAiServiceClient implements AiServiceClient {
         Flux<String> execution = switch (context.provider().getProtocol()) {
             case GEMINI -> doGeminiChatStream(request, context, traceId, requestId);
             case OPENAI_COMPATIBLE -> doOpenAiCompatibleChatStream(request, context, traceId, requestId);
+            case ANTHROPIC -> doAnthropicChatStream(request, context, traceId, requestId);
         };
 
         if (shouldRetry()) {
@@ -300,6 +302,82 @@ public class WebClientAiServiceClient implements AiServiceClient {
                 .bodyToFlux(String.class)
                 .transform(this::normalizeStreamPayload)
                 .flatMapIterable(this::parseGeminiStreamTokens)
+                .filter(StringUtils::hasText)
+                .onErrorMap(throwable -> mapException(throwable, traceId, context.name()));
+    }
+
+    private Mono<AiChatResponse> doAnthropicChat(AiChatRequest request,
+                                                 ProviderContext context,
+                                                 String traceId,
+                                                 String requestId) {
+        ProviderProperties provider = context.provider();
+        String model = resolveModel(provider, request);
+        if (!StringUtils.hasText(model)) {
+            throw new BusinessException(
+                    ErrorCode.AI_PROVIDER_CONFIG_INVALID,
+                    "provider " + context.name() + " requires a model",
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    traceId
+            );
+        }
+
+        String url = buildRequestUrl(provider, provider.getChatPath(), model);
+
+        return aiWebClient.post()
+                .uri(url)
+                .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
+                .headers(headers -> applyHeaders(headers, provider, traceId, requestId))
+                .bodyValue(buildAnthropicPayload(request, model, false))
+                .retrieve()
+                .onStatus(status -> status.isError(), clientResponse ->
+                        clientResponse.bodyToMono(String.class)
+                                .defaultIfEmpty("")
+                                .map(body -> new BusinessException(
+                                        ErrorCode.AI_SERVICE_BAD_RESPONSE,
+                                        "provider " + context.name() + " returned " + clientResponse.statusCode().value() + ": " + body,
+                                        HttpStatus.BAD_GATEWAY,
+                                        traceId
+                                )))
+                .bodyToMono(JsonNode.class)
+                .map(root -> parseAnthropicChatResponse(root, model))
+                .onErrorMap(throwable -> mapException(throwable, traceId, context.name()));
+    }
+
+    private Flux<String> doAnthropicChatStream(AiChatRequest request,
+                                               ProviderContext context,
+                                               String traceId,
+                                               String requestId) {
+        ProviderProperties provider = context.provider();
+        String model = resolveModel(provider, request);
+        if (!StringUtils.hasText(model)) {
+            throw new BusinessException(
+                    ErrorCode.AI_PROVIDER_CONFIG_INVALID,
+                    "provider " + context.name() + " requires a model",
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    traceId
+            );
+        }
+
+        String url = buildRequestUrl(provider, provider.getStreamPath(), model);
+
+        return aiWebClient.post()
+                .uri(url)
+                .header(HttpHeaders.ACCEPT, MediaType.TEXT_EVENT_STREAM_VALUE)
+                .headers(headers -> applyHeaders(headers, provider, traceId, requestId))
+                .bodyValue(buildAnthropicPayload(request, model, true))
+                .retrieve()
+                .onStatus(status -> status.isError(), clientResponse ->
+                        clientResponse.bodyToMono(String.class)
+                                .defaultIfEmpty("")
+                                .map(body -> new BusinessException(
+                                        ErrorCode.AI_SERVICE_BAD_RESPONSE,
+                                        "provider " + context.name() + " stream returned " + clientResponse.statusCode().value() + ": " + body,
+                                        HttpStatus.BAD_GATEWAY,
+                                        traceId
+                                )))
+                .bodyToFlux(String.class)
+                .transform(this::normalizeStreamPayload)
+                .flatMapIterable(this::parseAnthropicStreamTokens)
                 .filter(StringUtils::hasText)
                 .onErrorMap(throwable -> mapException(throwable, traceId, context.name()));
     }
@@ -508,6 +586,20 @@ public class WebClientAiServiceClient implements AiServiceClient {
         return payload;
     }
 
+    private Map<String, Object> buildAnthropicPayload(AiChatRequest request, String model, boolean stream) {
+        Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("model", model);
+        payload.put("stream", stream);
+        payload.put("max_tokens", resolveAnthropicMaxTokens(request));
+        payload.put("messages", buildAnthropicMessages(request));
+
+        String systemPrompt = resolveAnthropicSystemPrompt(request);
+        if (StringUtils.hasText(systemPrompt)) {
+            payload.put("system", systemPrompt);
+        }
+        return payload;
+    }
+
     private List<Map<String, Object>> buildOpenAiMessages(AiChatRequest request) {
         if (request.messages() != null && !request.messages().isEmpty()) {
             return request.messages().stream()
@@ -546,6 +638,25 @@ public class WebClientAiServiceClient implements AiServiceClient {
                 .toList();
     }
 
+    private List<Map<String, Object>> buildAnthropicMessages(AiChatRequest request) {
+        List<AiChatMessage> messages = request.messages();
+        if (messages == null || messages.isEmpty()) {
+            return List.of(Map.of(
+                    "role", "user",
+                    "content", List.of(Map.of("type", "text", "text", request.message()))
+            ));
+        }
+
+        return messages.stream()
+                .filter(message -> StringUtils.hasText(message.content()))
+                .filter(message -> !"system".equalsIgnoreCase(message.role()))
+                .map(message -> Map.<String, Object>of(
+                        "role", toAnthropicRole(message.role()),
+                        "content", List.of(Map.of("type", "text", "text", message.content()))
+                ))
+                .toList();
+    }
+
     private String toGeminiRole(String role) {
         if (!StringUtils.hasText(role)) {
             return "user";
@@ -554,6 +665,55 @@ public class WebClientAiServiceClient implements AiServiceClient {
             case "assistant", "model" -> "model";
             default -> "user";
         };
+    }
+
+    private String toAnthropicRole(String role) {
+        if (!StringUtils.hasText(role)) {
+            return "user";
+        }
+        return "assistant".equalsIgnoreCase(role.trim()) ? "assistant" : "user";
+    }
+
+    private Integer resolveAnthropicMaxTokens(AiChatRequest request) {
+        if (request.metadata() != null) {
+            Object value = request.metadata().get("maxTokens");
+            if (value instanceof Number number) {
+                int max = number.intValue();
+                if (max > 0) {
+                    return max;
+                }
+            }
+            if (value instanceof String text && StringUtils.hasText(text)) {
+                try {
+                    int max = Integer.parseInt(text.trim());
+                    if (max > 0) {
+                        return max;
+                    }
+                } catch (NumberFormatException ignored) {
+                    // ignore invalid metadata value and use default
+                }
+            }
+        }
+        return 1024;
+    }
+
+    private String resolveAnthropicSystemPrompt(AiChatRequest request) {
+        if (request.messages() != null) {
+            for (AiChatMessage message : request.messages()) {
+                if (message != null
+                        && "system".equalsIgnoreCase(message.role())
+                        && StringUtils.hasText(message.content())) {
+                    return message.content();
+                }
+            }
+        }
+        if (request.metadata() != null) {
+            Object systemPrompt = request.metadata().get("system");
+            if (systemPrompt instanceof String text && StringUtils.hasText(text)) {
+                return text;
+            }
+        }
+        return null;
     }
 
     private void applyHeaders(HttpHeaders headers,
@@ -757,6 +917,31 @@ public class WebClientAiServiceClient implements AiServiceClient {
         );
     }
 
+    private AiChatResponse parseAnthropicChatResponse(JsonNode root, String requestedModel) {
+        String content = extractAnthropicText(root.path("content"));
+        String finishReason = textValue(root.path("stop_reason"));
+        Integer promptTokens = intValue(root.path("usage").path("input_tokens"));
+        Integer completionTokens = intValue(root.path("usage").path("output_tokens"));
+        Integer totalTokens = null;
+        if (promptTokens != null && completionTokens != null) {
+            totalTokens = promptTokens + completionTokens;
+        }
+
+        String model = textValue(root.path("model"));
+        if (!StringUtils.hasText(model)) {
+            model = requestedModel;
+        }
+
+        return new AiChatResponse(
+                content == null ? "" : content,
+                model,
+                finishReason,
+                promptTokens,
+                completionTokens,
+                totalTokens
+        );
+    }
+
     private List<String> parseGeminiStreamTokens(String tokenOrJson) {
         if (!StringUtils.hasText(tokenOrJson)) {
             return List.of();
@@ -775,6 +960,50 @@ public class WebClientAiServiceClient implements AiServiceClient {
             }
 
             String content = extractGeminiText(root);
+            if (StringUtils.hasText(content)) {
+                tokens.add(content);
+            }
+            return tokens;
+        } catch (Exception ex) {
+            return List.of(tokenOrJson);
+        }
+    }
+
+    private List<String> parseAnthropicStreamTokens(String tokenOrJson) {
+        if (!StringUtils.hasText(tokenOrJson)) {
+            return List.of();
+        }
+        if (!tokenOrJson.startsWith("{")) {
+            return List.of(tokenOrJson);
+        }
+
+        try {
+            JsonNode root = objectMapper.readTree(tokenOrJson);
+            List<String> tokens = new ArrayList<>();
+
+            String usageToken = extractAnthropicUsageToken(root);
+            if (StringUtils.hasText(usageToken)) {
+                tokens.add(usageToken);
+            }
+
+            String type = textValue(root.path("type"));
+            if ("content_block_delta".equals(type)) {
+                String deltaText = textValue(root.path("delta").path("text"));
+                if (StringUtils.hasText(deltaText)) {
+                    tokens.add(deltaText);
+                }
+                return tokens;
+            }
+
+            if ("message_start".equals(type)) {
+                String startText = extractAnthropicText(root.path("message").path("content"));
+                if (StringUtils.hasText(startText)) {
+                    tokens.add(startText);
+                }
+                return tokens;
+            }
+
+            String content = extractAnthropicText(root.path("content"));
             if (StringUtils.hasText(content)) {
                 tokens.add(content);
             }
@@ -808,6 +1037,30 @@ public class WebClientAiServiceClient implements AiServiceClient {
             return null;
         }
         return String.join("", texts);
+    }
+
+    private String extractAnthropicText(JsonNode contentNode) {
+        if (contentNode == null || contentNode.isMissingNode() || contentNode.isNull()) {
+            return null;
+        }
+        if (contentNode.isTextual()) {
+            return textValue(contentNode);
+        }
+        if (!contentNode.isArray() || contentNode.isEmpty()) {
+            return null;
+        }
+        List<String> texts = new ArrayList<>();
+        for (JsonNode item : contentNode) {
+            String type = textValue(item.path("type"));
+            if (!"text".equals(type)) {
+                continue;
+            }
+            String text = textValue(item.path("text"));
+            if (StringUtils.hasText(text)) {
+                texts.add(text);
+            }
+        }
+        return texts.isEmpty() ? null : String.join("", texts);
     }
 
     private Flux<String> normalizeStreamPayload(Flux<String> payload) {
@@ -876,6 +1129,27 @@ public class WebClientAiServiceClient implements AiServiceClient {
         Integer completionTokens = intValue(usageNode.path("candidatesTokenCount"));
         Integer totalTokens = intValue(usageNode.path("totalTokenCount"));
         if (totalTokens == null && promptTokens != null && completionTokens != null) {
+            totalTokens = promptTokens + completionTokens;
+        }
+        if (promptTokens == null && completionTokens == null && totalTokens == null) {
+            return null;
+        }
+        return StreamMetaTokenCodec.encodeUsage(promptTokens, completionTokens, totalTokens);
+    }
+
+    private String extractAnthropicUsageToken(JsonNode root) {
+        JsonNode usageNode = root.path("usage");
+        if (usageNode.isMissingNode() || usageNode.isNull()) {
+            usageNode = root.path("message").path("usage");
+        }
+        if (usageNode.isMissingNode() || usageNode.isNull()) {
+            return null;
+        }
+
+        Integer promptTokens = intValue(usageNode.path("input_tokens"));
+        Integer completionTokens = intValue(usageNode.path("output_tokens"));
+        Integer totalTokens = null;
+        if (promptTokens != null && completionTokens != null) {
             totalTokens = promptTokens + completionTokens;
         }
         if (promptTokens == null && completionTokens == null && totalTokens == null) {
