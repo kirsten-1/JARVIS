@@ -4,10 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
 
 import com.bones.gateway.common.BusinessException;
 import com.bones.gateway.common.ErrorCode;
@@ -32,6 +34,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.ArgumentMatcher;
 import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Mono;
 
@@ -164,5 +167,68 @@ class AgentOrchestrationServiceTest {
 
         assertEquals(ErrorCode.CONVERSATION_ARCHIVED, ex.getErrorCode());
         verify(aiServiceClient, never()).chat(any());
+    }
+
+    @Test
+    void run_shouldSupportLlmJsonPlannerModeWithToolAllowlist() {
+        Conversation conversation = Conversation.builder()
+                .id(11L)
+                .userId(1001L)
+                .workspaceId(1L)
+                .title("新会话")
+                .status(ConversationStatus.ACTIVE)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+
+        when(conversationService.getUserConversation(11L, 1001L)).thenReturn(conversation);
+        when(conversationContextService.buildPromptMessages(eq(11L), any()))
+                .thenReturn(List.of(new AiChatMessage("system", "ctx")));
+        when(messageService.saveMessage(eq(11L), eq(MessageRole.USER), any(), eq(null)))
+                .thenReturn(Message.builder().id(201L).conversationId(11L).role(MessageRole.USER).content("q").build());
+        when(messageService.saveMessage(eq(11L), eq(MessageRole.ASSISTANT), any(), eq(null)))
+                .thenReturn(Message.builder().id(202L).conversationId(11L).role(MessageRole.ASSISTANT).content("a").build());
+        when(aiServiceClient.chat(any(AiChatRequest.class)))
+                .thenReturn(Mono.just(new AiChatResponse(
+                        "{\"tools\":[{\"name\":\"time_now\"},{\"name\":\"workspace_metrics_overview\"}]}",
+                        "glm-4.6v-flashx",
+                        "stop"
+                )))
+                .thenReturn(Mono.just(new AiChatResponse("final answer", "glm-4.6v-flashx", "stop")));
+        when(tokenEstimator.estimateMessagesTokens(any())).thenReturn(30);
+        when(tokenEstimator.estimateTextTokens(eq("final answer"))).thenReturn(10);
+        when(billingService.recordUsage(eq(1001L), eq(1L), any(), any(), eq(30), eq(10), eq(40), any()))
+                .thenReturn(new BillingUsage(30, 10, 0.003));
+
+        AgentRunResponse response = agentOrchestrationService.run(
+                11L,
+                new AgentRunRequest(
+                        1001L,
+                        "请先看时间和运营指标，然后给结论",
+                        "glm",
+                        "glm-4.6v-flashx",
+                        3,
+                        Map.of(
+                                "plannerMode", "llm_json",
+                                "allowedTools", List.of("time_now", "workspace_metrics_overview")
+                        )
+                )
+        );
+
+        assertEquals(2, response.steps().size());
+        assertEquals("time_now", response.steps().get(0).tool());
+        assertEquals("workspace_metrics_overview", response.steps().get(1).tool());
+        verify(aiServiceClient, times(2)).chat(any(AiChatRequest.class));
+        verify(aiServiceClient).chat(argThat(new ArgumentMatcher<>() {
+            @Override
+            public boolean matches(AiChatRequest request) {
+                return request != null
+                        && request.message() != null
+                        && request.message().contains("你是 Jarvis Planner")
+                        && request.message().contains("可用工具")
+                        && request.metadata() != null
+                        && "m14-llm-json".equals(request.metadata().get("agentPlanner"));
+            }
+        }));
     }
 }

@@ -4,7 +4,7 @@
 
 ## 文档导航
 
-- `docs/项目完整规划与里程碑.md`：M1-M13 完整规划与当前状态
+- `docs/项目完整规划与里程碑.md`：M1-M14 完整规划与当前状态
 - `docs/M1-工程骨架交付说明.md`：M1 详细交付内容
 - `docs/M3-网关基础能力交付说明.md`：M3 详细交付内容
 - `docs/M4-AI调用层交付说明.md`：M4 详细交付内容
@@ -20,6 +20,7 @@
 - `docs/M11-部署与发布交付说明.md`：生产部署、镜像发布、回滚与运行手册
 - `docs/M12-可观测与运维加固交付说明.md`：Prometheus/Grafana 观测栈与运维脚本
 - `docs/M13-Agent编排最小闭环交付说明.md`：Agent 最小闭环（Plan/Act/Observe/Respond）
+- `docs/M14-Agent编排策略与工具治理首版说明.md`：Agent 规划模式与工具治理（首版）
 - `docs/多厂商AI使用指南.md`：多厂商接入与路由使用指南
 - `docs/产品不足与增强路线.md`：当前产品不足与可增强路线
 - `docs/启动问题排查记录.md`：启动问题排查沉淀
@@ -72,6 +73,7 @@
 | M11 | 部署与发布（prod 编排 + 镜像发布 + 运行手册） | 1 天 | `completed` |
 | M12 | 可观测与运维加固（Prometheus + Grafana） | 1 天 | `completed` |
 | M13 | Agent 编排最小闭环（Plan/Act/Observe） | 1 天 | `completed` |
+| M14 | Agent 编排增强（LLM Planner + Tool Allowlist） | 1 天 | `in_progress` |
 
 ## M1 验收清单
 
@@ -230,6 +232,16 @@
 - [x] 支持计划-执行-观察-回答闭环（Plan/Act/Observe/Respond）
 - [x] 新增 M13 冒烟脚本：`scripts/m13_smoke.sh`
 - [x] 新增 M13 交付文档（`docs/M13-Agent编排最小闭环交付说明.md`）
+
+## M14 验收清单（进行中）
+
+- [x] Agent 增加规划模式：`rule`（默认）/`llm_json`
+- [x] Agent 增加工具白名单治理：`metadata.allowedTools`
+- [x] `llm_json` 规划结果增加 JSON 解析与兜底回退（回退到规则规划）
+- [x] 增加 M14 首版测试覆盖（LLM planner + allowlist）
+- [ ] 增加工具注册中心（可插拔工具 SPI）
+- [ ] 增加原生 Function Calling 协议编排与审计
+- [ ] 增加工具级超时/重试/幂等策略
 
 ## 当前目录结构（M1）
 

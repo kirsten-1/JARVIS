@@ -17,10 +17,13 @@ import com.bones.gateway.integration.ai.model.AiChatRequest;
 import com.bones.gateway.integration.ai.model.AiChatResponse;
 import com.bones.gateway.service.BillingService.UsageSource;
 import com.bones.gateway.dto.MetricsOverviewResponse;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -35,10 +38,15 @@ public class AgentOrchestrationService {
     private static final String TOOL_TIME_NOW = "time_now";
     private static final String TOOL_WORKSPACE_METRICS = "workspace_metrics_overview";
     private static final String TOOL_CONVERSATION_DIGEST = "conversation_digest";
+    private static final String PLANNER_MODE_RULE = "rule";
+    private static final String PLANNER_MODE_LLM_JSON = "llm_json";
+    private static final String METADATA_PLANNER_MODE = "plannerMode";
+    private static final String METADATA_ALLOWED_TOOLS = "allowedTools";
 
     private static final int DEFAULT_MAX_STEPS = 3;
     private static final int DEFAULT_DIGEST_LIMIT = 8;
     private static final int MAX_PROMPT_STEP_OUTPUT_CHARS = 1200;
+    private static final int MAX_PLANNER_RESPONSE_CHARS = 2000;
 
     private final ConversationService conversationService;
     private final MessageService messageService;
@@ -48,6 +56,7 @@ public class AgentOrchestrationService {
     private final BillingService billingService;
     private final TokenEstimator tokenEstimator;
     private final OpsMetricsService opsMetricsService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AgentOrchestrationService(ConversationService conversationService,
                                      MessageService messageService,
@@ -82,12 +91,23 @@ public class AgentOrchestrationService {
         try {
             String userInput = request.message().trim();
             int maxSteps = request.maxSteps() == null ? DEFAULT_MAX_STEPS : request.maxSteps();
-            List<AgentStepResult> stepResults = executeToolPlan(
+            String plannerMode = resolvePlannerMode(request.metadata());
+            List<String> allowedTools = resolveAllowedTools(request.metadata());
+            List<String> plannedTools = planTools(
                     userInput,
+                    maxSteps,
                     conversationId,
                     request.userId(),
-                    conversation.getWorkspaceId(),
-                    maxSteps
+                    request.provider(),
+                    request.model(),
+                    plannerMode,
+                    allowedTools
+            );
+            List<AgentStepResult> stepResults = executeToolPlan(
+                    plannedTools,
+                    conversationId,
+                    request.userId(),
+                    conversation.getWorkspaceId()
             );
 
             String agentPrompt = buildAgentPrompt(userInput, stepResults);
@@ -108,7 +128,7 @@ public class AgentOrchestrationService {
                     request.provider(),
                     request.model(),
                     promptMessages,
-                    buildAgentMetadata(request.metadata(), stepResults)
+                    buildAgentMetadata(request.metadata(), stepResults, plannerMode, allowedTools)
             );
             AiChatResponse aiResponse = aiServiceClient.chat(aiRequest).block();
             if (aiResponse == null || !hasText(aiResponse.content())) {
@@ -161,12 +181,10 @@ public class AgentOrchestrationService {
         }
     }
 
-    private List<AgentStepResult> executeToolPlan(String userInput,
+    private List<AgentStepResult> executeToolPlan(List<String> plannedTools,
                                                   Long conversationId,
                                                   Long userId,
-                                                  Long workspaceId,
-                                                  int maxSteps) {
-        List<String> plannedTools = planTools(userInput, maxSteps);
+                                                  Long workspaceId) {
         List<AgentStepResult> result = new ArrayList<>();
         for (int i = 0; i < plannedTools.size(); i++) {
             String tool = plannedTools.get(i);
@@ -191,7 +209,24 @@ public class AgentOrchestrationService {
         return result;
     }
 
-    private List<String> planTools(String userInput, int maxSteps) {
+    private List<String> planTools(String userInput,
+                                   int maxSteps,
+                                   Long conversationId,
+                                   Long userId,
+                                   String provider,
+                                   String model,
+                                   String plannerMode,
+                                   List<String> allowedTools) {
+        if (PLANNER_MODE_LLM_JSON.equals(plannerMode)) {
+            List<String> llmPlan = planToolsByLlm(userInput, maxSteps, conversationId, userId, provider, model, allowedTools);
+            if (!llmPlan.isEmpty()) {
+                return llmPlan;
+            }
+        }
+        return planToolsByRule(userInput, maxSteps, allowedTools);
+    }
+
+    private List<String> planToolsByRule(String userInput, int maxSteps, List<String> allowedTools) {
         String normalized = userInput.toLowerCase(Locale.ROOT);
         List<String> tools = new ArrayList<>();
 
@@ -205,11 +240,40 @@ public class AgentOrchestrationService {
             tools.add(TOOL_CONVERSATION_DIGEST);
         }
 
+        tools = tools.stream().filter(allowedTools::contains).toList();
         int safeMaxSteps = Math.max(1, Math.min(maxSteps, 6));
         if (tools.size() > safeMaxSteps) {
             return tools.subList(0, safeMaxSteps);
         }
         return tools;
+    }
+
+    private List<String> planToolsByLlm(String userInput,
+                                        int maxSteps,
+                                        Long conversationId,
+                                        Long userId,
+                                        String provider,
+                                        String model,
+                                        List<String> allowedTools) {
+        try {
+            String plannerPrompt = buildPlannerPrompt(userInput, allowedTools, maxSteps);
+            AiChatRequest plannerRequest = new AiChatRequest(
+                    plannerPrompt,
+                    conversationId,
+                    userId,
+                    provider,
+                    model,
+                    null,
+                    Map.of("agentPlanner", "m14-llm-json")
+            );
+            AiChatResponse plannerResponse = aiServiceClient.chat(plannerRequest).block();
+            if (plannerResponse == null || !hasText(plannerResponse.content())) {
+                return List.of();
+            }
+            return parsePlannerTools(plannerResponse.content(), maxSteps, allowedTools);
+        } catch (RuntimeException ex) {
+            return List.of();
+        }
     }
 
     private String buildToolInput(String tool, Long conversationId, Long workspaceId) {
@@ -289,12 +353,17 @@ public class AgentOrchestrationService {
         return prompt.toString();
     }
 
-    private Map<String, Object> buildAgentMetadata(Map<String, Object> metadata, List<AgentStepResult> steps) {
+    private Map<String, Object> buildAgentMetadata(Map<String, Object> metadata,
+                                                   List<AgentStepResult> steps,
+                                                   String plannerMode,
+                                                   List<String> allowedTools) {
         Map<String, Object> merged = new HashMap<>();
         if (metadata != null) {
             merged.putAll(metadata);
         }
         merged.put("agentMode", "m13-minimal");
+        merged.put("agentPlannerMode", plannerMode);
+        merged.put("agentAllowedTools", allowedTools);
         merged.put("agentStepCount", steps.size());
         merged.put("agentTools", steps.stream().map(AgentStepResult::tool).toList());
         return merged;
@@ -372,6 +441,126 @@ public class AgentOrchestrationService {
             }
         }
         return false;
+    }
+
+    private String resolvePlannerMode(Map<String, Object> metadata) {
+        if (metadata == null) {
+            return PLANNER_MODE_RULE;
+        }
+        Object value = metadata.get(METADATA_PLANNER_MODE);
+        if (!(value instanceof String text) || text.isBlank()) {
+            return PLANNER_MODE_RULE;
+        }
+        String normalized = text.trim().toLowerCase(Locale.ROOT);
+        if (PLANNER_MODE_LLM_JSON.equals(normalized)) {
+            return PLANNER_MODE_LLM_JSON;
+        }
+        return PLANNER_MODE_RULE;
+    }
+
+    private List<String> resolveAllowedTools(Map<String, Object> metadata) {
+        List<String> supported = supportedTools();
+        if (metadata == null) {
+            return supported;
+        }
+
+        Object value = metadata.get(METADATA_ALLOWED_TOOLS);
+        if (!(value instanceof Collection<?> collection) || collection.isEmpty()) {
+            return supported;
+        }
+
+        List<String> allowed = collection.stream()
+                .filter(String.class::isInstance)
+                .map(String.class::cast)
+                .map(String::trim)
+                .filter(supported::contains)
+                .distinct()
+                .toList();
+        return allowed.isEmpty() ? supported : allowed;
+    }
+
+    private List<String> supportedTools() {
+        return List.of(TOOL_TIME_NOW, TOOL_WORKSPACE_METRICS, TOOL_CONVERSATION_DIGEST);
+    }
+
+    private String buildPlannerPrompt(String userInput, List<String> allowedTools, int maxSteps) {
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("你是 Jarvis Planner。只做工具规划，不要回答最终答案。\n");
+        prompt.append("用户问题：").append(userInput).append("\n");
+        prompt.append("可用工具（仅可从以下选择）：\n");
+        for (String tool : allowedTools) {
+            prompt.append("- ").append(tool).append('\n');
+        }
+        prompt.append("最多工具步数：").append(Math.max(1, Math.min(maxSteps, 6))).append("\n");
+        prompt.append("输出要求：仅输出 JSON，不要 markdown，不要额外解释。\n");
+        prompt.append("格式：{\"tools\":[{\"name\":\"tool_name\"}]}\n");
+        return prompt.toString();
+    }
+
+    private List<String> parsePlannerTools(String rawContent, int maxSteps, List<String> allowedTools) {
+        String content = trimPlannerContent(rawContent);
+        if (content.isBlank()) {
+            return List.of();
+        }
+
+        JsonNode root = tryParseJson(content);
+        if (root == null || !root.path("tools").isArray()) {
+            return List.of();
+        }
+
+        List<String> planned = new ArrayList<>();
+        for (JsonNode toolNode : root.path("tools")) {
+            String toolName = textValue(toolNode.path("name"));
+            if (!hasText(toolName)) {
+                continue;
+            }
+            String normalized = toolName.trim();
+            if (!allowedTools.contains(normalized)) {
+                continue;
+            }
+            planned.add(normalized);
+        }
+
+        int safeMaxSteps = Math.max(1, Math.min(maxSteps, 6));
+        if (planned.size() > safeMaxSteps) {
+            return planned.subList(0, safeMaxSteps);
+        }
+        return planned;
+    }
+
+    private JsonNode tryParseJson(String raw) {
+        try {
+            return objectMapper.readTree(raw);
+        } catch (Exception ignored) {
+            int start = raw.indexOf('{');
+            int end = raw.lastIndexOf('}');
+            if (start >= 0 && end > start) {
+                try {
+                    return objectMapper.readTree(raw.substring(start, end + 1));
+                } catch (Exception ignoredAgain) {
+                    return null;
+                }
+            }
+            return null;
+        }
+    }
+
+    private String trimPlannerContent(String text) {
+        String normalized = truncate(text, MAX_PLANNER_RESPONSE_CHARS);
+        if (normalized.startsWith("```")) {
+            normalized = normalized.replaceFirst("^```[a-zA-Z]*", "");
+            if (normalized.endsWith("```")) {
+                normalized = normalized.substring(0, normalized.length() - 3);
+            }
+        }
+        return normalized.trim();
+    }
+
+    private String textValue(JsonNode node) {
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return null;
+        }
+        return node.isTextual() ? node.asText() : null;
     }
 
     private String truncate(String text, int maxChars) {
