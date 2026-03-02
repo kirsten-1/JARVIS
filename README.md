@@ -241,7 +241,7 @@
 - [x] 增加 M14 首版测试覆盖（LLM planner + allowlist）
 - [x] 增加工具注册中心（可插拔工具 SPI）
 - [x] 增加工具级超时/重试策略（`toolTimeoutMs`/`toolMaxRetries`）
-- [ ] 增加原生 Function Calling 协议编排与审计
+- [x] 增加原生 Function Calling 协议编排与审计
 - [ ] 增加工具级幂等与策略中心
 
 ## 当前目录结构（M1）

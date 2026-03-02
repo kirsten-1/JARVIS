@@ -3,6 +3,7 @@ package com.bones.gateway.service.agent;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.Map;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -13,6 +14,20 @@ public class TimeNowAgentTool implements AgentTool {
     @Override
     public String name() {
         return NAME;
+    }
+
+    @Override
+    public String description() {
+        return "Get current timestamp in Asia/Shanghai timezone";
+    }
+
+    @Override
+    public Map<String, Object> parametersSchema() {
+        return Map.of(
+                "type", "object",
+                "properties", Map.of(),
+                "additionalProperties", false
+        );
     }
 
     @Override

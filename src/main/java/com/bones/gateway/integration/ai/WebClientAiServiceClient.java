@@ -9,6 +9,7 @@ import com.bones.gateway.config.AiServiceProperties.ProviderProtocol;
 import com.bones.gateway.integration.ai.model.AiChatRequest;
 import com.bones.gateway.integration.ai.model.AiChatResponse;
 import com.bones.gateway.integration.ai.model.AiChatMessage;
+import com.bones.gateway.integration.ai.model.AiToolCall;
 import com.bones.gateway.integration.ai.model.StreamMetaTokenCodec;
 import com.bones.gateway.service.OpsMetricsService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -20,9 +21,11 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
@@ -56,6 +59,16 @@ public class WebClientAiServiceClient implements AiServiceClient {
 
     private static final String META_PROVIDER = "provider";
     private static final String META_MODEL = "model";
+    private static final String META_OPENAI_TOOLS = "openaiTools";
+    private static final String META_OPENAI_TOOL_CHOICE = "openaiToolChoice";
+    private static final String META_OPENAI_PARALLEL_TOOL_CALLS = "openaiParallelToolCalls";
+    private static final String META_OPENAI_RESPONSE_FORMAT = "openaiResponseFormat";
+    private static final Set<String> OPENAI_CONTROL_METADATA_KEYS = Set.of(
+            META_OPENAI_TOOLS,
+            META_OPENAI_TOOL_CHOICE,
+            META_OPENAI_PARALLEL_TOOL_CALLS,
+            META_OPENAI_RESPONSE_FORMAT
+    );
 
     private final WebClient aiWebClient;
     private final AiServiceProperties properties;
@@ -562,8 +575,9 @@ public class WebClientAiServiceClient implements AiServiceClient {
                                                               ProviderProperties provider,
                                                               boolean stream) {
         String model = resolveModel(provider, request);
+        Map<String, Object> requestMetadata = request.metadata();
 
-        Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        Map<String, Object> payload = new LinkedHashMap<>();
         if (StringUtils.hasText(model)) {
             payload.put("model", model);
         }
@@ -573,8 +587,33 @@ public class WebClientAiServiceClient implements AiServiceClient {
         if (request.userId() != null) {
             payload.put("user", String.valueOf(request.userId()));
         }
-        if (request.metadata() != null && !request.metadata().isEmpty()) {
-            payload.put("metadata", request.metadata());
+        if (requestMetadata != null && !requestMetadata.isEmpty()) {
+            Map<String, Object> providerMetadata = sanitizeOpenAiProviderMetadata(requestMetadata);
+            if (!providerMetadata.isEmpty()) {
+                payload.put("metadata", providerMetadata);
+            }
+
+            Object tools = requestMetadata.get(META_OPENAI_TOOLS);
+            if (tools instanceof List<?> list && !list.isEmpty()) {
+                payload.put("tools", list);
+            }
+
+            Object toolChoice = requestMetadata.get(META_OPENAI_TOOL_CHOICE);
+            if (toolChoice instanceof String text && StringUtils.hasText(text)) {
+                payload.put("tool_choice", text.trim());
+            } else if (toolChoice instanceof Map<?, ?> choiceMap && !choiceMap.isEmpty()) {
+                payload.put("tool_choice", choiceMap);
+            }
+
+            Object parallelToolCalls = requestMetadata.get(META_OPENAI_PARALLEL_TOOL_CALLS);
+            if (parallelToolCalls instanceof Boolean bool) {
+                payload.put("parallel_tool_calls", bool);
+            }
+
+            Object responseFormat = requestMetadata.get(META_OPENAI_RESPONSE_FORMAT);
+            if (responseFormat instanceof Map<?, ?> formatMap && !formatMap.isEmpty()) {
+                payload.put("response_format", formatMap);
+            }
         }
 
         return payload;
@@ -793,6 +832,7 @@ public class WebClientAiServiceClient implements AiServiceClient {
         Integer promptTokens = intValue(root.path("usage").path("prompt_tokens"));
         Integer completionTokens = intValue(root.path("usage").path("completion_tokens"));
         Integer totalTokens = intValue(root.path("usage").path("total_tokens"));
+        List<AiToolCall> toolCalls = List.of();
         if (totalTokens == null && promptTokens != null && completionTokens != null) {
             totalTokens = promptTokens + completionTokens;
         }
@@ -807,6 +847,7 @@ public class WebClientAiServiceClient implements AiServiceClient {
             if (!StringUtils.hasText(content)) {
                 content = textValue(firstChoice.path("text"));
             }
+            toolCalls = parseOpenAiToolCalls(firstChoice);
         }
 
         if (!StringUtils.hasText(content)) {
@@ -819,8 +860,41 @@ public class WebClientAiServiceClient implements AiServiceClient {
                 finishReason,
                 promptTokens,
                 completionTokens,
-                totalTokens
+                totalTokens,
+                toolCalls
         );
+    }
+
+    private List<AiToolCall> parseOpenAiToolCalls(JsonNode firstChoice) {
+        JsonNode messageNode = firstChoice.path("message");
+        if (messageNode.isMissingNode() || messageNode.isNull()) {
+            return List.of();
+        }
+
+        JsonNode toolCallsNode = messageNode.path("tool_calls");
+        if (toolCallsNode.isArray() && !toolCallsNode.isEmpty()) {
+            List<AiToolCall> parsed = new ArrayList<>();
+            for (JsonNode toolCall : toolCallsNode) {
+                String id = textValue(toolCall.path("id"));
+                String name = textValue(toolCall.path("function").path("name"));
+                String argumentsJson = normalizeJsonArguments(toolCall.path("function").path("arguments"));
+                if (!StringUtils.hasText(name)) {
+                    continue;
+                }
+                parsed.add(new AiToolCall(id, name.trim(), argumentsJson));
+            }
+            return parsed;
+        }
+
+        JsonNode functionCall = messageNode.path("function_call");
+        if (functionCall.isObject()) {
+            String name = textValue(functionCall.path("name"));
+            if (StringUtils.hasText(name)) {
+                String argumentsJson = normalizeJsonArguments(functionCall.path("arguments"));
+                return List.of(new AiToolCall(null, name.trim(), argumentsJson));
+            }
+        }
+        return List.of();
     }
 
     private List<String> parseOpenAiCompatibleStreamTokens(String line) {
@@ -1105,6 +1179,43 @@ public class WebClientAiServiceClient implements AiServiceClient {
             return texts.isEmpty() ? null : String.join("", texts);
         }
         return null;
+    }
+
+    private String normalizeJsonArguments(JsonNode rawArguments) {
+        if (rawArguments == null || rawArguments.isMissingNode() || rawArguments.isNull()) {
+            return "{}";
+        }
+        if (rawArguments.isTextual()) {
+            String text = rawArguments.asText();
+            return StringUtils.hasText(text) ? text.trim() : "{}";
+        }
+        try {
+            return objectMapper.writeValueAsString(rawArguments);
+        } catch (Exception ignored) {
+            return "{}";
+        }
+    }
+
+    private Map<String, Object> sanitizeOpenAiProviderMetadata(Map<String, Object> metadata) {
+        Map<String, Object> sanitized = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : metadata.entrySet()) {
+            String key = entry.getKey();
+            if (!StringUtils.hasText(key) || OPENAI_CONTROL_METADATA_KEYS.contains(key)) {
+                continue;
+            }
+            Object value = entry.getValue();
+            if (value == null) {
+                continue;
+            }
+            if (value instanceof String text && StringUtils.hasText(text)) {
+                sanitized.put(key, text.trim());
+                continue;
+            }
+            if (value instanceof Number || value instanceof Boolean) {
+                sanitized.put(key, String.valueOf(value));
+            }
+        }
+        return sanitized;
     }
 
     private String extractOpenAiUsageToken(JsonNode root) {

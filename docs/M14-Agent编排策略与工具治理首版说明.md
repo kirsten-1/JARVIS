@@ -2,9 +2,10 @@
 
 ## 1. 目标
 
-在 M13 最小闭环基础上，补齐“更接近商业 MVP”的三项关键能力：
+在 M13 最小闭环基础上，补齐“更接近商业 MVP”的四项关键能力：
 
 - 规划策略可配置：默认规则规划，支持 LLM JSON 规划。
+- 原生函数调用：支持 OpenAI-compatible `tool_calls` 编排闭环。
 - 工具调用可治理：支持请求级工具白名单，避免越权与失控调用。
 - 工具执行可控：支持工具注册中心与执行策略（超时、重试）。
 
@@ -13,6 +14,7 @@
 - 新增 Agent 规划模式：
   - `rule`：关键词规则规划（默认）。
   - `llm_json`：先调用模型生成工具规划 JSON，再执行。
+  - `function_calling`：通过原生 `tool_calls` 规划并执行工具，再汇总最终回答。
 - 新增工具白名单：
   - 请求 `metadata.allowedTools` 可指定允许执行的工具集合。
 - 新增工具注册中心（可插拔）：
@@ -24,10 +26,20 @@
   - 单步超时或异常不会中断主流程，步骤会记为 `failed` 并继续生成最终回答。
 - 新增安全兜底：
   - LLM 规划 JSON 解析失败时，自动回退到 `rule` 规划，不中断主流程。
+  - Function Calling 未返回工具调用时，自动回退到规则规划，不中断主流程。
+- 新增协议层支持：
+  - `AiChatResponse` 新增 `toolCalls` 字段，支持统一承载函数调用结果。
+  - OpenAI-compatible 请求支持 `tools/tool_choice/parallel_tool_calls` 注入。
+  - OpenAI-compatible 响应支持 `message.tool_calls` 与 `message.function_call` 解析。
+- 新增审计信息：
+  - Agent 最终请求 metadata 增加 `agentAuditSteps`（步序、工具名、状态、耗时、输入/输出摘要）。
 - 新增测试：
   - `AgentOrchestrationServiceTest#run_shouldSupportLlmJsonPlannerModeWithToolAllowlist`
+  - `AgentOrchestrationServiceTest#run_shouldSupportNativeFunctionCallingPlannerMode`
   - `AgentOrchestrationServiceTest#run_shouldRetryToolWhenConfigured`
   - `AgentOrchestrationServiceTest#run_shouldMarkStepFailedWhenToolTimeout`
+  - `WebClientAiServiceClientTest#chat_shouldParseToolCalls_whenOpenAiResponseContainsToolCalls`
+  - `WebClientAiServiceClientTest#chat_shouldSendOpenAiToolsAndFilterControlMetadata`
 
 ## 3. 使用方式
 
@@ -49,15 +61,32 @@
 }
 ```
 
+请求示例（启用原生 Function Calling）：
+
+```json
+{
+  "userId": 1001,
+  "message": "先获取当前时间和最近会话摘要，再给结论",
+  "provider": "openai",
+  "model": "gpt-4o-mini",
+  "maxSteps": 3,
+  "metadata": {
+    "plannerMode": "function_calling",
+    "allowedTools": ["time_now", "conversation_digest"],
+    "toolTimeoutMs": 3000,
+    "toolMaxRetries": 1,
+    "functionCallingMaxRounds": 2
+  }
+}
+```
+
 ## 4. 当前限制
 
-- 当前仍为“轻量 Function Calling”方案（通过 JSON 规划），尚未接入原生 tool-call 协议。
 - 工具执行目前仍是串行模型，尚未支持并行任务图调度。
-- 尚未引入统一工具审计日志与策略中心（目前只有步骤回传与测试覆盖）。
+- 审计仍为请求级 metadata 聚合，尚未下沉到独立审计中心与持久化检索。
 - 幂等键、降级策略、工具配额尚未接入。
 
 ## 5. 下一步（M14 后续）
 
-- 工具注册中心（SPI）与统一审计日志。
-- 原生 Function Calling 协议接入（OpenAI-compatible tool calls）。
+- 工具审计中心（独立存储 + 查询接口 + 风险告警）。
 - 工具级 SLA 控制（超时、重试、降级、幂等键）。

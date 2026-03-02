@@ -14,6 +14,7 @@ import com.bones.gateway.integration.ai.AiServiceClient;
 import com.bones.gateway.integration.ai.model.AiChatMessage;
 import com.bones.gateway.integration.ai.model.AiChatRequest;
 import com.bones.gateway.integration.ai.model.AiChatResponse;
+import com.bones.gateway.integration.ai.model.AiToolCall;
 import com.bones.gateway.service.agent.AgentTool;
 import com.bones.gateway.service.agent.AgentToolContext;
 import com.bones.gateway.service.agent.AgentToolRegistry;
@@ -21,12 +22,14 @@ import com.bones.gateway.service.agent.ConversationDigestAgentTool;
 import com.bones.gateway.service.agent.TimeNowAgentTool;
 import com.bones.gateway.service.agent.WorkspaceMetricsOverviewAgentTool;
 import com.bones.gateway.service.BillingService.UsageSource;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -44,16 +47,25 @@ public class AgentOrchestrationService {
     private static final String TOOL_CONVERSATION_DIGEST = ConversationDigestAgentTool.NAME;
     private static final String PLANNER_MODE_RULE = "rule";
     private static final String PLANNER_MODE_LLM_JSON = "llm_json";
+    private static final String PLANNER_MODE_FUNCTION_CALLING = "function_calling";
     private static final String METADATA_PLANNER_MODE = "plannerMode";
     private static final String METADATA_ALLOWED_TOOLS = "allowedTools";
     private static final String METADATA_TOOL_TIMEOUT_MS = "toolTimeoutMs";
     private static final String METADATA_TOOL_MAX_RETRIES = "toolMaxRetries";
+    private static final String METADATA_FC_MAX_ROUNDS = "functionCallingMaxRounds";
+
+    private static final String META_OPENAI_TOOLS = "openaiTools";
+    private static final String META_OPENAI_TOOL_CHOICE = "openaiToolChoice";
+    private static final String META_OPENAI_PARALLEL_TOOL_CALLS = "openaiParallelToolCalls";
+    private static final String META_OPENAI_RESPONSE_FORMAT = "openaiResponseFormat";
 
     private static final int DEFAULT_MAX_STEPS = 3;
     private static final int DEFAULT_TOOL_TIMEOUT_MS = 2000;
     private static final int DEFAULT_TOOL_MAX_RETRIES = 0;
+    private static final int DEFAULT_FC_MAX_ROUNDS = 2;
     private static final int MAX_TOOL_TIMEOUT_MS = 15000;
     private static final int MAX_TOOL_MAX_RETRIES = 2;
+    private static final int MAX_FC_MAX_ROUNDS = 4;
     private static final int MAX_PROMPT_STEP_OUTPUT_CHARS = 1200;
     private static final int MAX_PLANNER_RESPONSE_CHARS = 2000;
 
@@ -105,23 +117,48 @@ public class AgentOrchestrationService {
             int maxSteps = request.maxSteps() == null ? DEFAULT_MAX_STEPS : request.maxSteps();
             String plannerMode = resolvePlannerMode(request.metadata());
             List<String> allowedTools = resolveAllowedTools(request.metadata());
-            List<String> plannedTools = planTools(
-                    userInput,
-                    maxSteps,
-                    conversationId,
-                    request.userId(),
-                    request.provider(),
-                    request.model(),
-                    plannerMode,
-                    allowedTools
-            );
-            List<AgentStepResult> stepResults = executeToolPlan(
-                    plannedTools,
-                    conversationId,
-                    request.userId(),
-                    conversation.getWorkspaceId(),
-                    request.metadata()
-            );
+            List<AgentStepResult> stepResults;
+            if (PLANNER_MODE_FUNCTION_CALLING.equals(plannerMode)) {
+                stepResults = executeToolPlanByFunctionCalling(
+                        userInput,
+                        maxSteps,
+                        conversationId,
+                        request.userId(),
+                        conversation.getWorkspaceId(),
+                        request.provider(),
+                        request.model(),
+                        request.metadata(),
+                        allowedTools
+                );
+                if (stepResults.isEmpty()) {
+                    List<String> fallbackPlan = planToolsByRule(userInput, maxSteps, allowedTools);
+                    stepResults = executeToolPlan(
+                            fallbackPlan,
+                            conversationId,
+                            request.userId(),
+                            conversation.getWorkspaceId(),
+                            request.metadata()
+                    );
+                }
+            } else {
+                List<String> plannedTools = planTools(
+                        userInput,
+                        maxSteps,
+                        conversationId,
+                        request.userId(),
+                        request.provider(),
+                        request.model(),
+                        plannerMode,
+                        allowedTools
+                );
+                stepResults = executeToolPlan(
+                        plannedTools,
+                        conversationId,
+                        request.userId(),
+                        conversation.getWorkspaceId(),
+                        request.metadata()
+                );
+            }
 
             String agentPrompt = buildAgentPrompt(userInput, stepResults);
             List<AiChatMessage> promptMessages = conversationContextService.buildPromptMessages(conversationId, agentPrompt);
@@ -199,44 +236,172 @@ public class AgentOrchestrationService {
                                                   Long userId,
                                                   Long workspaceId,
                                                   Map<String, Object> metadata) {
-        AgentToolContext context = new AgentToolContext(conversationId, userId, workspaceId, metadata);
         int timeoutMs = resolveToolTimeoutMs(metadata);
         int maxRetries = resolveToolMaxRetries(metadata);
         List<AgentStepResult> result = new ArrayList<>();
         for (int i = 0; i < plannedTools.size(); i++) {
-            String toolName = plannedTools.get(i);
-            long startedAt = System.nanoTime();
-            AgentTool tool = toolRegistry.get(toolName).orElse(null);
-            if (tool == null) {
-                long durationMs = (System.nanoTime() - startedAt) / 1_000_000;
-                result.add(new AgentStepResult(
-                        i + 1,
-                        toolName,
-                        "failed",
-                        "{}",
-                        truncate("tool not registered: " + toolName, MAX_PROMPT_STEP_OUTPUT_CHARS),
-                        durationMs
-                ));
-                continue;
-            }
-            try {
-                String toolInput = tool.buildInput(context);
-                String toolOutput = executeToolWithPolicy(tool, context, timeoutMs, maxRetries);
-                long durationMs = (System.nanoTime() - startedAt) / 1_000_000;
-                result.add(new AgentStepResult(i + 1, toolName, "success", toolInput, toolOutput, durationMs));
-            } catch (RuntimeException ex) {
-                long durationMs = (System.nanoTime() - startedAt) / 1_000_000;
-                result.add(new AgentStepResult(
-                        i + 1,
-                        toolName,
-                        "failed",
-                        tool.buildInput(context),
-                        truncate("tool execution failed: " + ex.getMessage(), MAX_PROMPT_STEP_OUTPUT_CHARS),
-                        durationMs
-                ));
-            }
+            result.add(executeToolStep(
+                    i + 1,
+                    plannedTools.get(i),
+                    null,
+                    Map.of(),
+                    null,
+                    conversationId,
+                    userId,
+                    workspaceId,
+                    metadata,
+                    timeoutMs,
+                    maxRetries
+            ));
         }
         return result;
+    }
+
+    private List<AgentStepResult> executeToolPlanByFunctionCalling(String userInput,
+                                                                   int maxSteps,
+                                                                   Long conversationId,
+                                                                   Long userId,
+                                                                   Long workspaceId,
+                                                                   String provider,
+                                                                   String model,
+                                                                   Map<String, Object> metadata,
+                                                                   List<String> allowedTools) {
+        int timeoutMs = resolveToolTimeoutMs(metadata);
+        int maxRetries = resolveToolMaxRetries(metadata);
+        int maxRounds = resolveFunctionCallingMaxRounds(metadata);
+        int safeMaxSteps = Math.max(1, Math.min(maxSteps, 6));
+        List<AgentStepResult> results = new ArrayList<>();
+        String plannerInput = userInput;
+
+        for (int round = 1; round <= maxRounds && results.size() < safeMaxSteps; round++) {
+            int remainingSteps = safeMaxSteps - results.size();
+            String plannerPrompt = buildFunctionCallingPlannerPrompt(plannerInput, results, remainingSteps);
+            List<AiChatMessage> plannerMessages = conversationContextService.buildPromptMessages(conversationId, plannerPrompt);
+            Map<String, Object> plannerMetadata = buildFunctionCallingMetadata(metadata, allowedTools, remainingSteps, round);
+            AiChatRequest plannerRequest = new AiChatRequest(
+                    plannerPrompt,
+                    conversationId,
+                    userId,
+                    provider,
+                    model,
+                    plannerMessages,
+                    plannerMetadata
+            );
+            AiChatResponse plannerResponse = aiServiceClient.chat(plannerRequest).block();
+            if (plannerResponse == null || plannerResponse.toolCalls() == null || plannerResponse.toolCalls().isEmpty()) {
+                break;
+            }
+
+            List<AiToolCall> limitedCalls = plannerResponse.toolCalls().stream()
+                    .filter(call -> hasText(call.name()))
+                    .filter(call -> allowedTools.contains(call.name().trim()))
+                    .limit(remainingSteps)
+                    .toList();
+            if (limitedCalls.isEmpty()) {
+                break;
+            }
+
+            List<AgentStepResult> roundSteps = executeToolCalls(
+                    limitedCalls,
+                    conversationId,
+                    userId,
+                    workspaceId,
+                    metadata,
+                    timeoutMs,
+                    maxRetries,
+                    results.size() + 1
+            );
+            if (roundSteps.isEmpty()) {
+                break;
+            }
+            results.addAll(roundSteps);
+            plannerInput = userInput;
+        }
+        return results;
+    }
+
+    private List<AgentStepResult> executeToolCalls(List<AiToolCall> toolCalls,
+                                                   Long conversationId,
+                                                   Long userId,
+                                                   Long workspaceId,
+                                                   Map<String, Object> metadata,
+                                                   int timeoutMs,
+                                                   int maxRetries,
+                                                   int startIndex) {
+        List<AgentStepResult> results = new ArrayList<>();
+        int index = startIndex;
+        for (AiToolCall call : toolCalls) {
+            Map<String, Object> toolArguments = parseToolArguments(call.argumentsJson());
+            AgentStepResult step = executeToolStep(
+                    index,
+                    call.name().trim(),
+                    call.id(),
+                    toolArguments,
+                    call.argumentsJson(),
+                    conversationId,
+                    userId,
+                    workspaceId,
+                    metadata,
+                    timeoutMs,
+                    maxRetries
+            );
+            results.add(step);
+            index++;
+        }
+        return results;
+    }
+
+    private AgentStepResult executeToolStep(int index,
+                                            String toolName,
+                                            String toolCallId,
+                                            Map<String, Object> toolArguments,
+                                            String requestedInput,
+                                            Long conversationId,
+                                            Long userId,
+                                            Long workspaceId,
+                                            Map<String, Object> metadata,
+                                            int timeoutMs,
+                                            int maxRetries) {
+        long startedAt = System.nanoTime();
+        AgentTool tool = toolRegistry.get(toolName).orElse(null);
+        if (tool == null) {
+            long durationMs = (System.nanoTime() - startedAt) / 1_000_000;
+            return new AgentStepResult(
+                    index,
+                    toolName,
+                    "failed",
+                    safeToolInput(requestedInput),
+                    truncate("tool not registered: " + toolName, MAX_PROMPT_STEP_OUTPUT_CHARS),
+                    durationMs,
+                    toolCallId
+            );
+        }
+
+        AgentToolContext context = new AgentToolContext(
+                conversationId,
+                userId,
+                workspaceId,
+                metadata,
+                toolCallId,
+                toolArguments == null ? Map.of() : toolArguments
+        );
+        String toolInput = hasText(requestedInput) ? truncate(requestedInput, MAX_PROMPT_STEP_OUTPUT_CHARS) : safeBuildToolInput(tool, context);
+        try {
+            String toolOutput = executeToolWithPolicy(tool, context, timeoutMs, maxRetries);
+            long durationMs = (System.nanoTime() - startedAt) / 1_000_000;
+            return new AgentStepResult(index, toolName, "success", toolInput, toolOutput, durationMs, toolCallId);
+        } catch (RuntimeException ex) {
+            long durationMs = (System.nanoTime() - startedAt) / 1_000_000;
+            return new AgentStepResult(
+                    index,
+                    toolName,
+                    "failed",
+                    toolInput,
+                    truncate("tool execution failed: " + ex.getMessage(), MAX_PROMPT_STEP_OUTPUT_CHARS),
+                    durationMs,
+                    toolCallId
+            );
+        }
     }
 
     private String executeToolWithPolicy(AgentTool tool,
@@ -254,6 +419,95 @@ public class AgentOrchestrationService {
             execution = execution.retry(maxRetries);
         }
         return execution.blockOptional().orElse("");
+    }
+
+    private String safeBuildToolInput(AgentTool tool, AgentToolContext context) {
+        try {
+            return truncate(tool.buildInput(context), MAX_PROMPT_STEP_OUTPUT_CHARS);
+        } catch (RuntimeException ex) {
+            return "{}";
+        }
+    }
+
+    private String safeToolInput(String requestedInput) {
+        return hasText(requestedInput) ? truncate(requestedInput, MAX_PROMPT_STEP_OUTPUT_CHARS) : "{}";
+    }
+
+    private Map<String, Object> parseToolArguments(String argumentsJson) {
+        if (!hasText(argumentsJson)) {
+            return Map.of();
+        }
+        try {
+            JsonNode node = objectMapper.readTree(argumentsJson);
+            if (!node.isObject()) {
+                return Map.of();
+            }
+            return objectMapper.convertValue(node, new TypeReference<Map<String, Object>>() {
+            });
+        } catch (Exception ignored) {
+            return Map.of();
+        }
+    }
+
+    private String buildFunctionCallingPlannerPrompt(String userInput,
+                                                     List<AgentStepResult> existingSteps,
+                                                     int remainingSteps) {
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("你是 Jarvis Planner。请优先通过函数调用获取事实信息，再回答用户问题。\n");
+        prompt.append("用户问题：").append(userInput).append("\n");
+        prompt.append("本轮最多可再调用工具步数：").append(Math.max(1, remainingSteps)).append("\n");
+        if (!existingSteps.isEmpty()) {
+            prompt.append("已执行步骤：\n");
+            for (AgentStepResult step : existingSteps) {
+                prompt.append("- step=").append(step.index())
+                        .append(", tool=").append(step.tool())
+                        .append(", status=").append(step.status())
+                        .append(", output=").append(truncate(step.output(), 240))
+                        .append('\n');
+            }
+        }
+        prompt.append("规则：\n");
+        prompt.append("1) 需要实时信息、运营指标、会话摘要时，必须调用对应函数。\n");
+        prompt.append("2) 如果信息已充分，不要重复调用同一函数。\n");
+        prompt.append("3) 输出可以简短，但由系统决定是否继续调用函数。\n");
+        return prompt.toString();
+    }
+
+    private Map<String, Object> buildFunctionCallingMetadata(Map<String, Object> metadata,
+                                                             List<String> allowedTools,
+                                                             int remainingSteps,
+                                                             int round) {
+        Map<String, Object> merged = new LinkedHashMap<>();
+        if (metadata != null) {
+            merged.putAll(metadata);
+        }
+        merged.put("agentPlanner", "m14-function-calling");
+        merged.put("agentFcRound", round);
+        merged.put("agentFcRemainingSteps", remainingSteps);
+        merged.put(META_OPENAI_TOOLS, buildOpenAiToolDefinitions(allowedTools));
+        merged.put(META_OPENAI_TOOL_CHOICE, "auto");
+        merged.put(META_OPENAI_PARALLEL_TOOL_CALLS, false);
+        merged.put(META_OPENAI_RESPONSE_FORMAT, Map.of("type", "text"));
+        return merged;
+    }
+
+    private List<Map<String, Object>> buildOpenAiToolDefinitions(List<String> allowedTools) {
+        List<Map<String, Object>> definitions = new ArrayList<>();
+        for (String toolName : allowedTools) {
+            AgentTool tool = toolRegistry.get(toolName).orElse(null);
+            if (tool == null) {
+                continue;
+            }
+            Map<String, Object> function = new LinkedHashMap<>();
+            function.put("name", tool.name());
+            function.put("description", tool.description());
+            function.put("parameters", tool.parametersSchema());
+            definitions.add(Map.of(
+                    "type", "function",
+                    "function", function
+            ));
+        }
+        return definitions;
     }
 
     private List<String> planTools(String userInput,
@@ -359,7 +613,22 @@ public class AgentOrchestrationService {
         merged.put("agentAllowedTools", allowedTools);
         merged.put("agentStepCount", steps.size());
         merged.put("agentTools", steps.stream().map(AgentStepResult::tool).toList());
+        merged.put("agentAuditSteps", steps.stream().map(this::toAuditStep).toList());
         return merged;
+    }
+
+    private Map<String, Object> toAuditStep(AgentStepResult step) {
+        Map<String, Object> audit = new LinkedHashMap<>();
+        audit.put("index", step.index());
+        audit.put("tool", step.tool());
+        audit.put("status", step.status());
+        audit.put("durationMs", step.durationMs());
+        audit.put("input", truncate(step.input(), 300));
+        audit.put("output", truncate(step.output(), 300));
+        if (hasText(step.toolCallId())) {
+            audit.put("toolCallId", step.toolCallId());
+        }
+        return audit;
     }
 
     private AgentStepResponse toStepResponse(AgentStepResult result) {
@@ -448,6 +717,11 @@ public class AgentOrchestrationService {
         if (PLANNER_MODE_LLM_JSON.equals(normalized)) {
             return PLANNER_MODE_LLM_JSON;
         }
+        if (PLANNER_MODE_FUNCTION_CALLING.equals(normalized)
+                || "native_fc".equals(normalized)
+                || "fc".equals(normalized)) {
+            return PLANNER_MODE_FUNCTION_CALLING;
+        }
         return PLANNER_MODE_RULE;
     }
 
@@ -484,6 +758,11 @@ public class AgentOrchestrationService {
     private int resolveToolMaxRetries(Map<String, Object> metadata) {
         int retries = readPositiveInt(metadata, METADATA_TOOL_MAX_RETRIES, DEFAULT_TOOL_MAX_RETRIES);
         return Math.min(Math.max(retries, 0), MAX_TOOL_MAX_RETRIES);
+    }
+
+    private int resolveFunctionCallingMaxRounds(Map<String, Object> metadata) {
+        int rounds = readPositiveInt(metadata, METADATA_FC_MAX_ROUNDS, DEFAULT_FC_MAX_ROUNDS);
+        return Math.min(Math.max(rounds, 1), MAX_FC_MAX_ROUNDS);
     }
 
     private int readPositiveInt(Map<String, Object> metadata, String key, int defaultValue) {
@@ -601,7 +880,8 @@ public class AgentOrchestrationService {
             String status,
             String input,
             String output,
-            long durationMs
+            long durationMs,
+            String toolCallId
     ) {
     }
 

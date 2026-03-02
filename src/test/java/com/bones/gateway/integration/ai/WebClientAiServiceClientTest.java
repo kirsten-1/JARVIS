@@ -74,6 +74,94 @@ class WebClientAiServiceClientTest {
     }
 
     @Test
+    void chat_shouldParseToolCalls_whenOpenAiResponseContainsToolCalls() {
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("""
+                        {
+                          "model":"gpt-4o-mini",
+                          "choices":[
+                            {
+                              "message":{
+                                "role":"assistant",
+                                "tool_calls":[
+                                  {
+                                    "id":"call_123",
+                                    "type":"function",
+                                    "function":{
+                                      "name":"time_now",
+                                      "arguments":"{}"
+                                    }
+                                  }
+                                ]
+                              },
+                              "finish_reason":"tool_calls"
+                            }
+                          ]
+                        }
+                        """));
+
+        AiChatResponse response = client.chat(new AiChatRequest("hi", 1L, 1L, null, null, null, null)).block();
+
+        assertEquals("tool_calls", response.finishReason());
+        assertEquals(1, response.toolCalls().size());
+        assertEquals("call_123", response.toolCalls().get(0).id());
+        assertEquals("time_now", response.toolCalls().get(0).name());
+        assertEquals("{}", response.toolCalls().get(0).argumentsJson());
+    }
+
+    @Test
+    void chat_shouldSendOpenAiToolsAndFilterControlMetadata() throws Exception {
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("""
+                        {
+                          "model":"mock-model",
+                          "choices":[
+                            {
+                              "message":{"role":"assistant","content":"ok"},
+                              "finish_reason":"stop"
+                            }
+                          ]
+                        }
+                        """));
+
+        client.chat(new AiChatRequest(
+                "hi",
+                1L,
+                1L,
+                null,
+                null,
+                null,
+                Map.of(
+                        "openaiTools", List.of(
+                                Map.of(
+                                        "type", "function",
+                                        "function", Map.of(
+                                                "name", "time_now",
+                                                "description", "time",
+                                                "parameters", Map.of("type", "object", "properties", Map.of())
+                                        )
+                                )
+                        ),
+                        "openaiToolChoice", "auto",
+                        "openaiParallelToolCalls", false,
+                        "requestId", "abc123",
+                        "allowedTools", List.of("time_now")
+                )
+        )).block();
+
+        RecordedRequest recorded = mockWebServer.takeRequest();
+        String body = recorded.getBody().readUtf8();
+        assertTrue(body.contains("\"tools\""));
+        assertTrue(body.contains("\"tool_choice\":\"auto\""));
+        assertTrue(body.contains("\"parallel_tool_calls\":false"));
+        assertTrue(body.contains("\"metadata\":{\"requestId\":\"abc123\"}"));
+    }
+
+    @Test
     void chat_shouldThrowBusinessException_whenStatusIs500() {
         mockWebServer.enqueue(new MockResponse()
                 .setResponseCode(500)

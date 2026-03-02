@@ -15,6 +15,7 @@ import com.bones.gateway.common.BusinessException;
 import com.bones.gateway.common.ErrorCode;
 import com.bones.gateway.dto.AgentRunRequest;
 import com.bones.gateway.dto.AgentRunResponse;
+import com.bones.gateway.dto.MessageItemResponse;
 import com.bones.gateway.dto.MetricsOverviewResponse;
 import com.bones.gateway.entity.Conversation;
 import com.bones.gateway.entity.ConversationStatus;
@@ -24,6 +25,7 @@ import com.bones.gateway.integration.ai.AiServiceClient;
 import com.bones.gateway.integration.ai.model.AiChatMessage;
 import com.bones.gateway.integration.ai.model.AiChatRequest;
 import com.bones.gateway.integration.ai.model.AiChatResponse;
+import com.bones.gateway.integration.ai.model.AiToolCall;
 import com.bones.gateway.service.BillingService.BillingUsage;
 import com.bones.gateway.service.agent.AgentToolRegistry;
 import com.bones.gateway.service.agent.ConversationDigestAgentTool;
@@ -240,6 +242,79 @@ class AgentOrchestrationServiceTest {
                         && request.message().contains("可用工具")
                         && request.metadata() != null
                 && "m14-llm-json".equals(request.metadata().get("agentPlanner"));
+            }
+        }));
+    }
+
+    @Test
+    void run_shouldSupportNativeFunctionCallingPlannerMode() {
+        Conversation conversation = Conversation.builder()
+                .id(14L)
+                .userId(1001L)
+                .workspaceId(1L)
+                .title("新会话")
+                .status(ConversationStatus.ACTIVE)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+
+        when(conversationService.getUserConversation(14L, 1001L)).thenReturn(conversation);
+        when(conversationContextService.buildPromptMessages(eq(14L), any()))
+                .thenReturn(List.of(new AiChatMessage("system", "ctx")));
+        when(messageService.saveMessage(eq(14L), eq(MessageRole.USER), any(), eq(null)))
+                .thenReturn(Message.builder().id(211L).conversationId(14L).role(MessageRole.USER).content("q").build());
+        when(messageService.saveMessage(eq(14L), eq(MessageRole.ASSISTANT), any(), eq(null)))
+                .thenReturn(Message.builder().id(212L).conversationId(14L).role(MessageRole.ASSISTANT).content("a").build());
+        when(messageService.listMessages(eq(14L), eq(1001L))).thenReturn(List.of(
+                new MessageItemResponse(1L, 14L, MessageRole.USER, "hi", null, LocalDateTime.now()),
+                new MessageItemResponse(2L, 14L, MessageRole.ASSISTANT, "hello", null, LocalDateTime.now())
+        ));
+        when(aiServiceClient.chat(any(AiChatRequest.class)))
+                .thenReturn(Mono.just(new AiChatResponse(
+                        "",
+                        "gpt-4o-mini",
+                        "tool_calls",
+                        null,
+                        null,
+                        null,
+                        List.of(
+                                new AiToolCall("call_1", "time_now", "{}"),
+                                new AiToolCall("call_2", "conversation_digest", "{\"limit\":2}")
+                        )
+                )))
+                .thenReturn(Mono.just(new AiChatResponse("final answer", "gpt-4o-mini", "stop")));
+        when(tokenEstimator.estimateMessagesTokens(any())).thenReturn(32);
+        when(tokenEstimator.estimateTextTokens(eq("final answer"))).thenReturn(12);
+        when(billingService.recordUsage(eq(1001L), eq(1L), any(), any(), eq(32), eq(12), eq(44), any()))
+                .thenReturn(new BillingUsage(32, 12, 0.003));
+
+        AgentRunResponse response = agentOrchestrationService.run(
+                14L,
+                new AgentRunRequest(
+                        1001L,
+                        "先获取当前时间并回顾最近会话，再给结论",
+                        "glm",
+                        "glm-4.6v-flashx",
+                        3,
+                        Map.of(
+                                "plannerMode", "function_calling",
+                                "allowedTools", List.of("time_now", "conversation_digest")
+                        )
+                )
+        );
+
+        assertEquals(2, response.steps().size());
+        assertEquals("time_now", response.steps().get(0).tool());
+        assertEquals("conversation_digest", response.steps().get(1).tool());
+        verify(aiServiceClient, times(3)).chat(any(AiChatRequest.class));
+        verify(aiServiceClient, times(2)).chat(argThat(new ArgumentMatcher<>() {
+            @Override
+            public boolean matches(AiChatRequest request) {
+                return request != null
+                        && request.metadata() != null
+                        && "m14-function-calling".equals(request.metadata().get("agentPlanner"))
+                        && request.metadata().containsKey("openaiTools")
+                        && request.metadata().containsKey("openaiToolChoice");
             }
         }));
     }
