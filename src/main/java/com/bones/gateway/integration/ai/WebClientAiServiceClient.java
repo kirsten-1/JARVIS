@@ -726,7 +726,13 @@ public class WebClientAiServiceClient implements AiServiceClient {
         headers.set(REQUEST_ID_HEADER, requestId);
 
         if (!provider.isApiKeyInQuery() && StringUtils.hasText(provider.getApiKey()) && StringUtils.hasText(provider.getApiKeyHeader())) {
-            String value = (provider.getApiKeyPrefix() == null ? "" : provider.getApiKeyPrefix()) + provider.getApiKey();
+            String prefix = provider.getApiKeyPrefix() == null ? "" : provider.getApiKeyPrefix();
+            if (StringUtils.hasText(prefix)
+                    && !prefix.endsWith(" ")
+                    && "Authorization".equalsIgnoreCase(provider.getApiKeyHeader())) {
+                prefix = prefix + " ";
+            }
+            String value = prefix + provider.getApiKey();
             headers.set(provider.getApiKeyHeader(), value);
         }
 

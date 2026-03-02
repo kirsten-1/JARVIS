@@ -100,9 +100,9 @@ jarvis:
         chat-path: ${AI_MINIMAX_CHAT_PATH:/v1/messages}
         stream-path: ${AI_MINIMAX_STREAM_PATH:/v1/messages}
         api-key: ${AI_MINIMAX_API_KEY:}
-        model: ${AI_MINIMAX_MODEL:MiniMax-M1}
-        api-key-header: ${AI_MINIMAX_API_KEY_HEADER:x-api-key}
-        api-key-prefix: ${AI_MINIMAX_API_KEY_PREFIX:}
+        model: ${AI_MINIMAX_MODEL:MiniMax-M2.5}
+        api-key-header: ${AI_MINIMAX_API_KEY_HEADER:Authorization}
+        api-key-prefix: ${AI_MINIMAX_API_KEY_PREFIX:Bearer}
         headers:
           anthropic-version: ${AI_MINIMAX_ANTHROPIC_VERSION:2023-06-01}
       aliyun:
