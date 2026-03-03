@@ -7,6 +7,9 @@ public record KnowledgeSearchResponse(
         String query,
         String searchMode,
         int limit,
+        Double keywordWeight,
+        Double vectorWeight,
+        Double scoreThreshold,
         List<KnowledgeSnippetItemResponse> items
 ) {
 }

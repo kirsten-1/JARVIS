@@ -2,6 +2,7 @@ package com.bones.gateway.service;
 
 import com.bones.gateway.common.BusinessException;
 import com.bones.gateway.common.ErrorCode;
+import com.bones.gateway.config.KnowledgeSearchProperties;
 import com.bones.gateway.dto.CreateKnowledgeSnippetRequest;
 import com.bones.gateway.dto.KnowledgeSearchResponse;
 import com.bones.gateway.dto.KnowledgeSnippetItemResponse;
@@ -22,23 +23,28 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class KnowledgeBaseService {
 
-    private static final int MAX_SEARCH_CANDIDATES = 200;
-    private static final int MAX_QUERY_LIMIT = 20;
-    private static final int DEFAULT_SEARCH_LIMIT = 8;
-    private static final String DEFAULT_SEARCH_MODE = "hybrid";
-    private static final double HYBRID_KEYWORD_WEIGHT = 0.65;
-    private static final double HYBRID_VECTOR_WEIGHT = 0.35;
+    private static final int SEARCH_CANDIDATES_UPPER_BOUND = 200;
+    private static final int QUERY_LIMIT_MIN = 1;
+    private static final int QUERY_LIMIT_MAX = 50;
+    private static final int QUERY_LIMIT_DEFAULT = 8;
+    private static final double VECTOR_SIMILARITY_DEFAULT = 0.15;
+    private static final double HYBRID_SCORE_DEFAULT = 0.10;
+    private static final double HYBRID_KEYWORD_WEIGHT_DEFAULT = 0.65;
+    private static final double HYBRID_VECTOR_WEIGHT_DEFAULT = 0.35;
 
     private final KnowledgeSnippetRepository knowledgeSnippetRepository;
     private final WorkspaceService workspaceService;
     private final KnowledgeEmbeddingService knowledgeEmbeddingService;
+    private final KnowledgeSearchProperties knowledgeSearchProperties;
 
     public KnowledgeBaseService(KnowledgeSnippetRepository knowledgeSnippetRepository,
                                 WorkspaceService workspaceService,
-                                KnowledgeEmbeddingService knowledgeEmbeddingService) {
+                                KnowledgeEmbeddingService knowledgeEmbeddingService,
+                                KnowledgeSearchProperties knowledgeSearchProperties) {
         this.knowledgeSnippetRepository = knowledgeSnippetRepository;
         this.workspaceService = workspaceService;
         this.knowledgeEmbeddingService = knowledgeEmbeddingService;
+        this.knowledgeSearchProperties = knowledgeSearchProperties;
     }
 
     @Transactional
@@ -83,7 +89,7 @@ public class KnowledgeBaseService {
 
     @Transactional(readOnly = true)
     public KnowledgeSearchResponse searchSnippets(Long userId, Long workspaceId, String query, Integer limit) {
-        return searchSnippets(userId, workspaceId, query, limit, DEFAULT_SEARCH_MODE);
+        return searchSnippets(userId, workspaceId, query, limit, resolveDefaultSearchMode());
     }
 
     @Transactional(readOnly = true)
@@ -95,15 +101,19 @@ public class KnowledgeBaseService {
         Long resolvedWorkspaceId = workspaceService.resolveWorkspaceId(workspaceId, userId);
         int safeLimit = resolveLimit(limit);
         String normalizedQuery = normalizeQuery(query);
-        SearchMode mode = resolveSearchMode(searchMode);
+        SearchMode mode = resolveSearchMode(searchMode == null || searchMode.isBlank()
+                ? resolveDefaultSearchMode()
+                : searchMode);
+        HybridWeights hybridWeights = resolveHybridWeights();
         float[] queryVector = normalizedQuery.isBlank() || mode == SearchMode.KEYWORD
                 ? new float[0]
                 : knowledgeEmbeddingService.embed(normalizedQuery);
 
         List<KnowledgeSnippet> candidates = knowledgeSnippetRepository
                 .findTop200ByWorkspaceIdOrderByUpdatedAtDesc(resolvedWorkspaceId);
-        if (candidates.size() > MAX_SEARCH_CANDIDATES) {
-            candidates = candidates.subList(0, MAX_SEARCH_CANDIDATES);
+        int maxCandidates = resolveMaxCandidates();
+        if (candidates.size() > maxCandidates) {
+            candidates = candidates.subList(0, maxCandidates);
         }
 
         List<SnippetScore> scored = new ArrayList<>();
@@ -120,7 +130,13 @@ public class KnowledgeBaseService {
 
         List<SnippetScore> ranked = new ArrayList<>();
         for (SnippetScore score : scored) {
-            double finalScore = resolveFinalScore(score, maxKeywordScore, mode, normalizedQuery.isBlank());
+            double finalScore = resolveFinalScore(
+                    score,
+                    maxKeywordScore,
+                    mode,
+                    normalizedQuery.isBlank(),
+                    hybridWeights
+            );
             SnippetScore merged = new SnippetScore(
                     score.snippet(),
                     score.keywordScore(),
@@ -141,7 +157,16 @@ public class KnowledgeBaseService {
                 .map(score -> toItem(score.snippet(), normalizedQuery.isBlank() ? null : score.finalScore()))
                 .toList();
 
-        return new KnowledgeSearchResponse(resolvedWorkspaceId, normalizedQuery, mode.apiValue(), safeLimit, items);
+        return new KnowledgeSearchResponse(
+                resolvedWorkspaceId,
+                normalizedQuery,
+                mode.apiValue(),
+                safeLimit,
+                resolveKeywordWeight(mode, hybridWeights),
+                resolveVectorWeight(mode, hybridWeights),
+                resolveScoreThreshold(mode, normalizedQuery.isBlank()),
+                items
+        );
     }
 
     private String normalizeTitle(String title) {
@@ -192,10 +217,14 @@ public class KnowledgeBaseService {
     }
 
     private int resolveLimit(Integer limit) {
+        int maxLimit = Math.max(QUERY_LIMIT_MIN, Math.min(knowledgeSearchProperties.getMaxLimit(), QUERY_LIMIT_MAX));
+        int defaultLimit = knowledgeSearchProperties.getDefaultLimit() <= 0
+                ? QUERY_LIMIT_DEFAULT
+                : knowledgeSearchProperties.getDefaultLimit();
         if (limit == null) {
-            return DEFAULT_SEARCH_LIMIT;
+            return Math.min(defaultLimit, maxLimit);
         }
-        return Math.max(1, Math.min(limit, MAX_QUERY_LIMIT));
+        return Math.max(QUERY_LIMIT_MIN, Math.min(limit, maxLimit));
     }
 
     private String normalizeQuery(String query) {
@@ -294,7 +323,8 @@ public class KnowledgeBaseService {
     private double resolveFinalScore(SnippetScore score,
                                      double maxKeywordScore,
                                      SearchMode searchMode,
-                                     boolean blankQuery) {
+                                     boolean blankQuery,
+                                     HybridWeights hybridWeights) {
         if (blankQuery) {
             return 1.0;
         }
@@ -303,7 +333,7 @@ public class KnowledgeBaseService {
             case VECTOR -> score.vectorScore();
             case HYBRID -> {
                 double keywordScore = maxKeywordScore > 0 ? score.keywordScore() / maxKeywordScore : 0;
-                yield keywordScore * HYBRID_KEYWORD_WEIGHT + score.vectorScore() * HYBRID_VECTOR_WEIGHT;
+                yield keywordScore * hybridWeights.keywordWeight() + score.vectorScore() * hybridWeights.vectorWeight();
             }
         };
     }
@@ -314,8 +344,8 @@ public class KnowledgeBaseService {
         }
         return switch (searchMode) {
             case KEYWORD -> score.keywordScore() > 0;
-            case VECTOR -> score.vectorScore() > 0;
-            case HYBRID -> score.keywordScore() > 0 || score.vectorScore() > 0;
+            case VECTOR -> score.vectorScore() >= resolveVectorMinSimilarity();
+            case HYBRID -> score.finalScore() >= resolveHybridMinScore();
         };
     }
 
@@ -369,12 +399,83 @@ public class KnowledgeBaseService {
         return SearchMode.HYBRID;
     }
 
+    private String resolveDefaultSearchMode() {
+        String configured = knowledgeSearchProperties.getDefaultMode();
+        if (configured == null || configured.isBlank()) {
+            return "hybrid";
+        }
+        return configured;
+    }
+
+    private int resolveMaxCandidates() {
+        int configured = knowledgeSearchProperties.getMaxCandidates();
+        if (configured <= 0) {
+            return SEARCH_CANDIDATES_UPPER_BOUND;
+        }
+        return Math.min(configured, SEARCH_CANDIDATES_UPPER_BOUND);
+    }
+
+    private double resolveVectorMinSimilarity() {
+        return clamp01(knowledgeSearchProperties.getVectorMinSimilarity(), VECTOR_SIMILARITY_DEFAULT);
+    }
+
+    private double resolveHybridMinScore() {
+        return clamp01(knowledgeSearchProperties.getHybridMinScore(), HYBRID_SCORE_DEFAULT);
+    }
+
+    private HybridWeights resolveHybridWeights() {
+        double keyword = Math.max(0, knowledgeSearchProperties.getHybridKeywordWeight());
+        double vector = Math.max(0, knowledgeSearchProperties.getHybridVectorWeight());
+        double sum = keyword + vector;
+        if (sum <= 0.00001) {
+            return new HybridWeights(HYBRID_KEYWORD_WEIGHT_DEFAULT, HYBRID_VECTOR_WEIGHT_DEFAULT);
+        }
+        return new HybridWeights(keyword / sum, vector / sum);
+    }
+
+    private Double resolveKeywordWeight(SearchMode searchMode, HybridWeights hybridWeights) {
+        return switch (searchMode) {
+            case KEYWORD -> 1.0;
+            case VECTOR -> 0.0;
+            case HYBRID -> hybridWeights.keywordWeight();
+        };
+    }
+
+    private Double resolveVectorWeight(SearchMode searchMode, HybridWeights hybridWeights) {
+        return switch (searchMode) {
+            case KEYWORD -> 0.0;
+            case VECTOR -> 1.0;
+            case HYBRID -> hybridWeights.vectorWeight();
+        };
+    }
+
+    private Double resolveScoreThreshold(SearchMode searchMode, boolean blankQuery) {
+        if (blankQuery) {
+            return 0.0;
+        }
+        return switch (searchMode) {
+            case KEYWORD -> 0.0;
+            case VECTOR -> resolveVectorMinSimilarity();
+            case HYBRID -> resolveHybridMinScore();
+        };
+    }
+
+    private double clamp01(double value, double fallback) {
+        if (Double.isNaN(value) || Double.isInfinite(value)) {
+            return fallback;
+        }
+        return Math.max(0.0, Math.min(1.0, value));
+    }
+
     private record SnippetScore(
             KnowledgeSnippet snippet,
             double keywordScore,
             double vectorScore,
             double finalScore
     ) {
+    }
+
+    private record HybridWeights(double keywordWeight, double vectorWeight) {
     }
 
     private enum SearchMode {

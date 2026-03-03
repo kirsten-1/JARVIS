@@ -4,7 +4,7 @@
 
 ## 文档导航
 
-- `docs/项目完整规划与里程碑.md`：M1-M16 完整规划与当前状态
+- `docs/项目完整规划与里程碑.md`：M1-M17 完整规划与当前状态
 - `docs/M1-工程骨架交付说明.md`：M1 详细交付内容
 - `docs/M3-网关基础能力交付说明.md`：M3 详细交付内容
 - `docs/M4-AI调用层交付说明.md`：M4 详细交付内容
@@ -23,6 +23,7 @@
 - `docs/M14-Agent编排策略与工具治理首版说明.md`：Agent 规划模式与工具治理（首版）
 - `docs/M15-Agent知识检索最小闭环交付说明.md`：知识片段入库 + 检索 + Agent 知识工具首版
 - `docs/M16-Agent混合检索增强交付说明.md`：keyword/vector/hybrid 检索增强与向量化首版
+- `docs/M17-Agent检索调优与可运营化说明.md`：检索权重/阈值配置化与结果可解释增强
 - `docs/多厂商AI使用指南.md`：多厂商接入与路由使用指南
 - `docs/产品不足与增强路线.md`：当前产品不足与可增强路线
 - `docs/启动问题排查记录.md`：启动问题排查沉淀
@@ -78,6 +79,7 @@
 | M14 | Agent 编排增强（LLM Planner + Tool Allowlist） | 1 天 | `completed` |
 | M15 | Agent 编排知识增强（知识片段 + 检索工具 + RAG 首批） | 1 天 | `completed` |
 | M16 | Agent 混合检索增强（keyword/vector/hybrid + embedding） | 1 天 | `completed` |
+| M17 | Agent 检索调优与可运营化（权重阈值配置 + 返回生效参数） | 1 天 | `completed` |
 
 ## M1 验收清单
 
@@ -271,6 +273,17 @@
 - [x] 补充单测覆盖：`KnowledgeBaseServiceTest`（vector/hybrid 路径）
 - [x] 新增 M16 交付文档（`docs/M16-Agent混合检索增强交付说明.md`）
 
+## M17 验收清单（已完成）
+
+- [x] 检索参数配置化：`jarvis.knowledge.search.*`（默认模式、候选上限、limit、阈值、权重）
+- [x] 混合检索权重归一化：支持非 1.0 配置自动归一化生效
+- [x] 向量/混合检索阈值控制：`vectorMinSimilarity`、`hybridMinScore`
+- [x] 检索响应新增可解释字段：`keywordWeight`、`vectorWeight`、`scoreThreshold`
+- [x] 配置模板补齐：`application-dev.yml`、`application-prod.yml`、`.env*.example`
+- [x] 新增 M17 冒烟脚本：`scripts/m17_smoke.sh`
+- [x] 补充单测覆盖：`KnowledgeBaseServiceTest`（权重归一化与阈值路径）
+- [x] 新增 M17 交付文档（`docs/M17-Agent检索调优与可运营化说明.md`）
+
 ## 当前目录结构（M1）
 
 ```text
@@ -429,6 +442,12 @@ M16 混合检索闭环冒烟：
 
 ```bash
 ./scripts/m16_smoke.sh
+```
+
+M17 检索调优与可解释冒烟：
+
+```bash
+./scripts/m17_smoke.sh
 ```
 
 ## 更新规则
@@ -602,3 +621,12 @@ M16 混合检索闭环冒烟：
 - 完成 Agent 工具增强：`workspace_knowledge_search` 支持 `searchMode` 参数与 `knowledgeSearchMode` 元数据回退。
 - 完成 M16 冒烟脚本：`scripts/m16_smoke.sh`（已验证通过）。
 - 完成 M16 交付文档：`docs/M16-Agent混合检索增强交付说明.md`。
+
+### M17（完成时间：2026-03-03）
+
+- 完成知识检索参数配置化：新增 `KnowledgeSearchProperties`，支持权重、阈值、候选数量、默认模式等在线可调。
+- 完成混合检索权重治理：`hybrid-keyword-weight` / `hybrid-vector-weight` 自动归一化，避免异常配置导致排序漂移。
+- 完成检索返回可解释增强：接口返回 `keywordWeight` / `vectorWeight` / `scoreThreshold`，便于运营与排障。
+- 完成配置模板补齐：`application-dev.yml`、`application-prod.yml`、`.env.example`、`.env.prod.example`。
+- 完成 M17 冒烟脚本：`scripts/m17_smoke.sh`（已验证通过）。
+- 完成 M17 交付文档：`docs/M17-Agent检索调优与可运营化说明.md`。

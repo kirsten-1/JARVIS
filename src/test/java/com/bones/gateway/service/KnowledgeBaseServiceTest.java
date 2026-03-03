@@ -11,6 +11,7 @@ import static org.mockito.Mockito.never;
 
 import com.bones.gateway.common.BusinessException;
 import com.bones.gateway.common.ErrorCode;
+import com.bones.gateway.config.KnowledgeSearchProperties;
 import com.bones.gateway.dto.CreateKnowledgeSnippetRequest;
 import com.bones.gateway.dto.KnowledgeSearchResponse;
 import com.bones.gateway.dto.UpdateKnowledgeSnippetRequest;
@@ -34,14 +35,17 @@ class KnowledgeBaseServiceTest {
 
     private KnowledgeBaseService knowledgeBaseService;
     private KnowledgeEmbeddingService knowledgeEmbeddingService;
+    private KnowledgeSearchProperties knowledgeSearchProperties;
 
     @BeforeEach
     void setUp() {
         knowledgeEmbeddingService = new KnowledgeEmbeddingService();
+        knowledgeSearchProperties = new KnowledgeSearchProperties();
         knowledgeBaseService = new KnowledgeBaseService(
                 knowledgeSnippetRepository,
                 workspaceService,
-                knowledgeEmbeddingService
+                knowledgeEmbeddingService,
+                knowledgeSearchProperties
         );
     }
 
@@ -102,6 +106,9 @@ class KnowledgeBaseServiceTest {
 
         assertEquals(1L, response.workspaceId());
         assertEquals("hybrid", response.searchMode());
+        assertEquals(0.65, response.keywordWeight(), 0.0001);
+        assertEquals(0.35, response.vectorWeight(), 0.0001);
+        assertEquals(0.1, response.scoreThreshold(), 0.0001);
         assertFalse(response.items().isEmpty());
         assertEquals("RAG 检索链路", response.items().get(0).title());
         assertEquals(5, response.limit());
@@ -146,8 +153,41 @@ class KnowledgeBaseServiceTest {
         KnowledgeSearchResponse response = knowledgeBaseService.searchSnippets(1001L, 1L, "向量 检索", 5, "vector");
 
         assertEquals("vector", response.searchMode());
+        assertEquals(0.0, response.keywordWeight(), 0.0001);
+        assertEquals(1.0, response.vectorWeight(), 0.0001);
+        assertEquals(0.15, response.scoreThreshold(), 0.0001);
         assertFalse(response.items().isEmpty());
         assertEquals("向量检索文档", response.items().get(0).title());
+    }
+
+    @Test
+    void searchSnippets_shouldClampHybridWeightsAndThresholdFromConfig() {
+        knowledgeSearchProperties.setHybridKeywordWeight(2.0);
+        knowledgeSearchProperties.setHybridVectorWeight(1.0);
+        knowledgeSearchProperties.setHybridMinScore(0.3);
+        when(workspaceService.resolveWorkspaceId(1L, 1001L)).thenReturn(1L);
+        LocalDateTime now = LocalDateTime.now();
+        when(knowledgeSnippetRepository.findTop200ByWorkspaceIdOrderByUpdatedAtDesc(eq(1L)))
+                .thenReturn(List.of(
+                        KnowledgeSnippet.builder()
+                                .id(31L)
+                                .workspaceId(1L)
+                                .createdBy(1001L)
+                                .title("RAG 混合检索")
+                                .content("hybrid retrieval and vector ranking")
+                                .tags("rag,hybrid")
+                                .createdAt(now.minusMinutes(2))
+                                .updatedAt(now.minusMinutes(2))
+                                .build()
+                ));
+
+        KnowledgeSearchResponse response = knowledgeBaseService.searchSnippets(1001L, 1L, "hybrid retrieval", 5, "hybrid");
+
+        assertEquals("hybrid", response.searchMode());
+        assertEquals(2.0 / 3.0, response.keywordWeight(), 0.0001);
+        assertEquals(1.0 / 3.0, response.vectorWeight(), 0.0001);
+        assertEquals(0.3, response.scoreThreshold(), 0.0001);
+        assertFalse(response.items().isEmpty());
     }
 
     @Test
