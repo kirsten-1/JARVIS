@@ -120,7 +120,7 @@ SEARCH_JSON=$(curl -sS "${BASE_URL}/api/v1/knowledge/snippets?userId=${USER_ID}&
   -H "Authorization: Bearer ${TOKEN}")
 SEARCH_CODE=$(echo "${SEARCH_JSON}" | jq -r '.code')
 ITEM_COUNT=$(echo "${SEARCH_JSON}" | jq -r '.data.items | length')
-TOP_TITLE=$(echo "${SEARCH_JSON}" | jq -r '.data.items[0].title // ""')
+UPDATED_TITLE=$(echo "${SEARCH_JSON}" | jq -r --arg sid "${SNIPPET_ID}" '.data.items[] | select((.id|tostring)==$sid) | .title' | head -n 1)
 if [[ "${SEARCH_CODE}" != "0" ]]; then
   echo "[M15-SMOKE] search api failed"
   echo "${SEARCH_JSON}"
@@ -131,8 +131,8 @@ if [[ "${ITEM_COUNT}" -lt 1 ]]; then
   echo "${SEARCH_JSON}"
   exit 1
 fi
-if [[ "${TOP_TITLE}" != *"更新"* ]]; then
-  echo "[M15-SMOKE] expected top item title to include 更新 after update"
+if [[ -z "${UPDATED_TITLE}" || "${UPDATED_TITLE}" != *"更新"* ]]; then
+  echo "[M15-SMOKE] expected updated snippet to appear in search result"
   echo "${SEARCH_JSON}"
   exit 1
 fi

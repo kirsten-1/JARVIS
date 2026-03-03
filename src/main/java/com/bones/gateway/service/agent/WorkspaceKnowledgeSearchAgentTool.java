@@ -43,6 +43,11 @@ public class WorkspaceKnowledgeSearchAgentTool implements AgentTool {
                                 "minimum", 1,
                                 "maximum", 10,
                                 "description", "Maximum returned snippets"
+                        ),
+                        "searchMode", Map.of(
+                                "type", "string",
+                                "enum", List.of("keyword", "vector", "hybrid"),
+                                "description", "Retrieval mode. Default is hybrid"
                         )
                 ),
                 "required", List.of("query"),
@@ -54,7 +59,11 @@ public class WorkspaceKnowledgeSearchAgentTool implements AgentTool {
     public String buildInput(AgentToolContext context) {
         String query = resolveQuery(context);
         int limit = resolveLimit(context);
-        return "{\"workspaceId\":" + context.workspaceId() + ",\"query\":\"" + escapeJson(query) + "\",\"limit\":" + limit + "}";
+        String searchMode = resolveSearchMode(context);
+        return "{\"workspaceId\":" + context.workspaceId()
+                + ",\"query\":\"" + escapeJson(query)
+                + "\",\"searchMode\":\"" + escapeJson(searchMode)
+                + "\",\"limit\":" + limit + "}";
     }
 
     @Override
@@ -67,15 +76,19 @@ public class WorkspaceKnowledgeSearchAgentTool implements AgentTool {
             return "knowledge query is empty, please provide query argument";
         }
         int limit = resolveLimit(context);
+        String searchMode = resolveSearchMode(context);
         List<KnowledgeSnippetItemResponse> items = knowledgeBaseService
-                .searchSnippets(context.userId(), context.workspaceId(), query, limit)
+                .searchSnippets(context.userId(), context.workspaceId(), query, limit, searchMode)
                 .items();
         if (items.isEmpty()) {
             return "no matched knowledge snippets for query=" + query;
         }
 
         StringBuilder output = new StringBuilder();
-        output.append("query=").append(query).append(", matches=").append(items.size()).append('\n');
+        output.append("query=").append(query)
+                .append(", searchMode=").append(searchMode)
+                .append(", matches=").append(items.size())
+                .append('\n');
         for (KnowledgeSnippetItemResponse item : items) {
             output.append("- id=").append(item.id())
                     .append(", title=").append(item.title())
@@ -116,6 +129,29 @@ public class WorkspaceKnowledgeSearchAgentTool implements AgentTool {
             }
         }
         return DEFAULT_LIMIT;
+    }
+
+    private String resolveSearchMode(AgentToolContext context) {
+        Object raw = context.toolArguments().get("searchMode");
+        if (raw instanceof String text && !text.isBlank()) {
+            return normalizeSearchMode(text);
+        }
+        Object modeFromMetadata = context.metadata().get("knowledgeSearchMode");
+        if (modeFromMetadata instanceof String text && !text.isBlank()) {
+            return normalizeSearchMode(text);
+        }
+        return "hybrid";
+    }
+
+    private String normalizeSearchMode(String raw) {
+        String normalized = raw.trim().toLowerCase();
+        if ("keyword".equals(normalized) || "lexical".equals(normalized)) {
+            return "keyword";
+        }
+        if ("vector".equals(normalized) || "semantic".equals(normalized)) {
+            return "vector";
+        }
+        return "hybrid";
     }
 
     private int clampLimit(int raw) {

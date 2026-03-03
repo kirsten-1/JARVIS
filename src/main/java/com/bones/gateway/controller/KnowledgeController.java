@@ -75,8 +75,15 @@ public class KnowledgeController {
             @RequestParam(value = "userId", required = false) Long userId,
             @RequestParam(value = "workspaceId", required = false) Long workspaceId,
             @RequestParam(value = "query", required = false) String query,
+            @RequestParam(value = "searchMode", defaultValue = "hybrid") String searchMode,
             @RequestParam(value = "limit", defaultValue = "8") @Min(1) @Max(20) Integer limit) {
         Long targetUserId = accessControlService.resolveUserId(userId);
-        return ApiResponse.success(knowledgeBaseService.searchSnippets(targetUserId, workspaceId, query, limit));
+        return ApiResponse.success(knowledgeBaseService.searchSnippets(
+                targetUserId,
+                workspaceId,
+                query,
+                limit,
+                searchMode
+        ));
     }
 }

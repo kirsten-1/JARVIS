@@ -33,10 +33,16 @@ class KnowledgeBaseServiceTest {
     private WorkspaceService workspaceService;
 
     private KnowledgeBaseService knowledgeBaseService;
+    private KnowledgeEmbeddingService knowledgeEmbeddingService;
 
     @BeforeEach
     void setUp() {
-        knowledgeBaseService = new KnowledgeBaseService(knowledgeSnippetRepository, workspaceService);
+        knowledgeEmbeddingService = new KnowledgeEmbeddingService();
+        knowledgeBaseService = new KnowledgeBaseService(
+                knowledgeSnippetRepository,
+                workspaceService,
+                knowledgeEmbeddingService
+        );
     }
 
     @Test
@@ -92,12 +98,56 @@ class KnowledgeBaseServiceTest {
                                 .build()
                 ));
 
-        KnowledgeSearchResponse response = knowledgeBaseService.searchSnippets(1001L, 1L, "rag 检索", 5);
+        KnowledgeSearchResponse response = knowledgeBaseService.searchSnippets(1001L, 1L, "rag 检索", 5, "hybrid");
 
         assertEquals(1L, response.workspaceId());
+        assertEquals("hybrid", response.searchMode());
         assertFalse(response.items().isEmpty());
         assertEquals("RAG 检索链路", response.items().get(0).title());
         assertEquals(5, response.limit());
+    }
+
+    @Test
+    void searchSnippets_shouldSupportVectorMode() {
+        when(workspaceService.resolveWorkspaceId(1L, 1001L)).thenReturn(1L);
+        LocalDateTime now = LocalDateTime.now();
+        String matchedEmbedding = knowledgeEmbeddingService.serialize(
+                knowledgeEmbeddingService.embed("向量 检索 测试 文档")
+        );
+        String unmatchedEmbedding = knowledgeEmbeddingService.serialize(
+                knowledgeEmbeddingService.embed("缓存 失效 策略")
+        );
+        when(knowledgeSnippetRepository.findTop200ByWorkspaceIdOrderByUpdatedAtDesc(eq(1L)))
+                .thenReturn(List.of(
+                        KnowledgeSnippet.builder()
+                                .id(11L)
+                                .workspaceId(1L)
+                                .createdBy(1001L)
+                                .title("向量检索文档")
+                                .content("这里介绍向量检索策略。")
+                                .tags("vector,retrieval")
+                                .embedding(matchedEmbedding)
+                                .createdAt(now.minusMinutes(2))
+                                .updatedAt(now.minusMinutes(2))
+                                .build(),
+                        KnowledgeSnippet.builder()
+                                .id(12L)
+                                .workspaceId(1L)
+                                .createdBy(1001L)
+                                .title("缓存策略")
+                                .content("缓存和回收。")
+                                .tags("cache")
+                                .embedding(unmatchedEmbedding)
+                                .createdAt(now.minusMinutes(1))
+                                .updatedAt(now.minusMinutes(1))
+                                .build()
+                ));
+
+        KnowledgeSearchResponse response = knowledgeBaseService.searchSnippets(1001L, 1L, "向量 检索", 5, "vector");
+
+        assertEquals("vector", response.searchMode());
+        assertFalse(response.items().isEmpty());
+        assertEquals("向量检索文档", response.items().get(0).title());
     }
 
     @Test

@@ -43,6 +43,9 @@ public class KnowledgeSnippet {
     @Column(name = "tags", length = 500)
     private String tags;
 
+    @Column(name = "embedding", columnDefinition = "MEDIUMTEXT")
+    private String embedding;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 

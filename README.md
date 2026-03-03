@@ -4,7 +4,7 @@
 
 ## 文档导航
 
-- `docs/项目完整规划与里程碑.md`：M1-M15 完整规划与当前状态
+- `docs/项目完整规划与里程碑.md`：M1-M16 完整规划与当前状态
 - `docs/M1-工程骨架交付说明.md`：M1 详细交付内容
 - `docs/M3-网关基础能力交付说明.md`：M3 详细交付内容
 - `docs/M4-AI调用层交付说明.md`：M4 详细交付内容
@@ -22,6 +22,7 @@
 - `docs/M13-Agent编排最小闭环交付说明.md`：Agent 最小闭环（Plan/Act/Observe/Respond）
 - `docs/M14-Agent编排策略与工具治理首版说明.md`：Agent 规划模式与工具治理（首版）
 - `docs/M15-Agent知识检索最小闭环交付说明.md`：知识片段入库 + 检索 + Agent 知识工具首版
+- `docs/M16-Agent混合检索增强交付说明.md`：keyword/vector/hybrid 检索增强与向量化首版
 - `docs/多厂商AI使用指南.md`：多厂商接入与路由使用指南
 - `docs/产品不足与增强路线.md`：当前产品不足与可增强路线
 - `docs/启动问题排查记录.md`：启动问题排查沉淀
@@ -76,6 +77,7 @@
 | M13 | Agent 编排最小闭环（Plan/Act/Observe） | 1 天 | `completed` |
 | M14 | Agent 编排增强（LLM Planner + Tool Allowlist） | 1 天 | `completed` |
 | M15 | Agent 编排知识增强（知识片段 + 检索工具 + RAG 首批） | 1 天 | `completed` |
+| M16 | Agent 混合检索增强（keyword/vector/hybrid + embedding） | 1 天 | `completed` |
 
 ## M1 验收清单
 
@@ -258,6 +260,17 @@
 - [x] 新增单测：`KnowledgeBaseServiceTest`
 - [x] 新增 M15 交付文档（`docs/M15-Agent知识检索最小闭环交付说明.md`）
 
+## M16 验收清单（已完成）
+
+- [x] 新增向量化能力：`KnowledgeEmbeddingService`（本地 embedding 首版）
+- [x] 知识片段新增 embedding 字段与迁移：`V4__knowledge_snippet_embedding.sql`
+- [x] 检索新增模式参数：`searchMode=keyword/vector/hybrid`
+- [x] 检索响应新增 `searchMode` 字段，便于调用侧审计
+- [x] Agent 知识工具支持 `searchMode` 参数与 `knowledgeSearchMode` 元数据
+- [x] 新增 M16 冒烟脚本：`scripts/m16_smoke.sh`
+- [x] 补充单测覆盖：`KnowledgeBaseServiceTest`（vector/hybrid 路径）
+- [x] 新增 M16 交付文档（`docs/M16-Agent混合检索增强交付说明.md`）
+
 ## 当前目录结构（M1）
 
 ```text
@@ -410,6 +423,12 @@ M15 知识检索闭环冒烟：
 
 ```bash
 ./scripts/m15_smoke.sh
+```
+
+M16 混合检索闭环冒烟：
+
+```bash
+./scripts/m16_smoke.sh
 ```
 
 ## 更新规则
@@ -573,3 +592,13 @@ M15 知识检索闭环冒烟：
 - 完成编排规则补充：用户问题命中知识关键词时自动规划知识检索工具。
 - 完成 M15 冒烟脚本：`scripts/m15_smoke.sh`（已验证通过）。
 - 完成 M15 交付文档：`docs/M15-Agent知识检索最小闭环交付说明.md`。
+
+### M16（完成时间：2026-03-03）
+
+- 完成检索模式增强：支持 `keyword/vector/hybrid` 三模式检索。
+- 完成向量化首版：新增 `KnowledgeEmbeddingService`，对知识片段进行 embedding 存储与余弦相似度检索。
+- 完成数据库演进：新增 `V4__knowledge_snippet_embedding.sql`（知识片段 embedding 字段）。
+- 完成知识检索响应增强：返回 `searchMode`，便于前端与 Agent 审计。
+- 完成 Agent 工具增强：`workspace_knowledge_search` 支持 `searchMode` 参数与 `knowledgeSearchMode` 元数据回退。
+- 完成 M16 冒烟脚本：`scripts/m16_smoke.sh`（已验证通过）。
+- 完成 M16 交付文档：`docs/M16-Agent混合检索增强交付说明.md`。
