@@ -3,6 +3,7 @@ package com.bones.gateway.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -106,6 +107,8 @@ class KnowledgeBaseServiceTest {
 
         assertEquals(1L, response.workspaceId());
         assertEquals("hybrid", response.searchMode());
+        assertEquals(200, response.maxCandidates());
+        assertFalse(response.overrideApplied());
         assertEquals(0.65, response.keywordWeight(), 0.0001);
         assertEquals(0.35, response.vectorWeight(), 0.0001);
         assertEquals(0.1, response.scoreThreshold(), 0.0001);
@@ -153,6 +156,8 @@ class KnowledgeBaseServiceTest {
         KnowledgeSearchResponse response = knowledgeBaseService.searchSnippets(1001L, 1L, "向量 检索", 5, "vector");
 
         assertEquals("vector", response.searchMode());
+        assertEquals(200, response.maxCandidates());
+        assertFalse(response.overrideApplied());
         assertEquals(0.0, response.keywordWeight(), 0.0001);
         assertEquals(1.0, response.vectorWeight(), 0.0001);
         assertEquals(0.15, response.scoreThreshold(), 0.0001);
@@ -184,9 +189,53 @@ class KnowledgeBaseServiceTest {
         KnowledgeSearchResponse response = knowledgeBaseService.searchSnippets(1001L, 1L, "hybrid retrieval", 5, "hybrid");
 
         assertEquals("hybrid", response.searchMode());
+        assertEquals(200, response.maxCandidates());
+        assertFalse(response.overrideApplied());
         assertEquals(2.0 / 3.0, response.keywordWeight(), 0.0001);
         assertEquals(1.0 / 3.0, response.vectorWeight(), 0.0001);
         assertEquals(0.3, response.scoreThreshold(), 0.0001);
+        assertFalse(response.items().isEmpty());
+    }
+
+    @Test
+    void searchSnippets_shouldApplyRequestLevelOverrides() {
+        when(workspaceService.resolveWorkspaceId(1L, 1001L)).thenReturn(1L);
+        LocalDateTime now = LocalDateTime.now();
+        when(knowledgeSnippetRepository.findTop200ByWorkspaceIdOrderByUpdatedAtDesc(eq(1L)))
+                .thenReturn(List.of(
+                        KnowledgeSnippet.builder()
+                                .id(51L)
+                                .workspaceId(1L)
+                                .createdBy(1001L)
+                                .title("语义检索最佳实践")
+                                .content("通过调节关键词和向量融合权重提高召回稳定性")
+                                .tags("retrieval,hybrid")
+                                .createdAt(now.minusMinutes(2))
+                                .updatedAt(now.minusMinutes(2))
+                                .build()
+                ));
+
+        KnowledgeSearchResponse response = knowledgeBaseService.searchSnippets(
+                1001L,
+                1L,
+                "语义 检索",
+                5,
+                "hybrid",
+                new KnowledgeBaseService.SearchOverrides(
+                        0.45,
+                        0.25,
+                        0.2,
+                        0.8,
+                        50
+                )
+        );
+
+        assertEquals("hybrid", response.searchMode());
+        assertEquals(50, response.maxCandidates());
+        assertTrue(response.overrideApplied());
+        assertEquals(0.2, response.keywordWeight(), 0.0001);
+        assertEquals(0.8, response.vectorWeight(), 0.0001);
+        assertEquals(0.25, response.scoreThreshold(), 0.0001);
         assertFalse(response.items().isEmpty());
     }
 

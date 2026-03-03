@@ -7,6 +7,8 @@ public record KnowledgeSearchResponse(
         String query,
         String searchMode,
         int limit,
+        int maxCandidates,
+        boolean overrideApplied,
         Double keywordWeight,
         Double vectorWeight,
         Double scoreThreshold,

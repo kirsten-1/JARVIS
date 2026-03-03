@@ -98,20 +98,31 @@ public class KnowledgeBaseService {
                                                   String query,
                                                   Integer limit,
                                                   String searchMode) {
+        return searchSnippets(userId, workspaceId, query, limit, searchMode, null);
+    }
+
+    @Transactional(readOnly = true)
+    public KnowledgeSearchResponse searchSnippets(Long userId,
+                                                  Long workspaceId,
+                                                  String query,
+                                                  Integer limit,
+                                                  String searchMode,
+                                                  SearchOverrides overrides) {
         Long resolvedWorkspaceId = workspaceService.resolveWorkspaceId(workspaceId, userId);
         int safeLimit = resolveLimit(limit);
         String normalizedQuery = normalizeQuery(query);
         SearchMode mode = resolveSearchMode(searchMode == null || searchMode.isBlank()
                 ? resolveDefaultSearchMode()
                 : searchMode);
-        HybridWeights hybridWeights = resolveHybridWeights();
+        SearchRuntimePolicy runtimePolicy = resolveRuntimePolicy(overrides);
+        HybridWeights hybridWeights = runtimePolicy.hybridWeights();
         float[] queryVector = normalizedQuery.isBlank() || mode == SearchMode.KEYWORD
                 ? new float[0]
                 : knowledgeEmbeddingService.embed(normalizedQuery);
 
         List<KnowledgeSnippet> candidates = knowledgeSnippetRepository
                 .findTop200ByWorkspaceIdOrderByUpdatedAtDesc(resolvedWorkspaceId);
-        int maxCandidates = resolveMaxCandidates();
+        int maxCandidates = runtimePolicy.maxCandidates();
         if (candidates.size() > maxCandidates) {
             candidates = candidates.subList(0, maxCandidates);
         }
@@ -143,7 +154,7 @@ public class KnowledgeBaseService {
                     score.vectorScore(),
                     finalScore
             );
-            if (shouldInclude(merged, mode, normalizedQuery.isBlank())) {
+            if (shouldInclude(merged, mode, normalizedQuery.isBlank(), runtimePolicy)) {
                 ranked.add(merged);
             }
         }
@@ -162,9 +173,11 @@ public class KnowledgeBaseService {
                 normalizedQuery,
                 mode.apiValue(),
                 safeLimit,
+                maxCandidates,
+                runtimePolicy.overrideApplied(),
                 resolveKeywordWeight(mode, hybridWeights),
                 resolveVectorWeight(mode, hybridWeights),
-                resolveScoreThreshold(mode, normalizedQuery.isBlank()),
+                resolveScoreThreshold(mode, normalizedQuery.isBlank(), runtimePolicy),
                 items
         );
     }
@@ -338,14 +351,17 @@ public class KnowledgeBaseService {
         };
     }
 
-    private boolean shouldInclude(SnippetScore score, SearchMode searchMode, boolean blankQuery) {
+    private boolean shouldInclude(SnippetScore score,
+                                  SearchMode searchMode,
+                                  boolean blankQuery,
+                                  SearchRuntimePolicy runtimePolicy) {
         if (blankQuery) {
             return true;
         }
         return switch (searchMode) {
             case KEYWORD -> score.keywordScore() > 0;
-            case VECTOR -> score.vectorScore() >= resolveVectorMinSimilarity();
-            case HYBRID -> score.finalScore() >= resolveHybridMinScore();
+            case VECTOR -> score.vectorScore() >= runtimePolicy.vectorMinSimilarity();
+            case HYBRID -> score.finalScore() >= runtimePolicy.hybridMinScore();
         };
     }
 
@@ -407,25 +423,37 @@ public class KnowledgeBaseService {
         return configured;
     }
 
-    private int resolveMaxCandidates() {
-        int configured = knowledgeSearchProperties.getMaxCandidates();
+    private int resolveMaxCandidates(Integer requestedMaxCandidates) {
+        int configured = requestedMaxCandidates == null
+                ? knowledgeSearchProperties.getMaxCandidates()
+                : requestedMaxCandidates;
         if (configured <= 0) {
             return SEARCH_CANDIDATES_UPPER_BOUND;
         }
         return Math.min(configured, SEARCH_CANDIDATES_UPPER_BOUND);
     }
 
-    private double resolveVectorMinSimilarity() {
-        return clamp01(knowledgeSearchProperties.getVectorMinSimilarity(), VECTOR_SIMILARITY_DEFAULT);
+    private double resolveVectorMinSimilarity(Double requestedMinSimilarity) {
+        double configured = requestedMinSimilarity == null
+                ? knowledgeSearchProperties.getVectorMinSimilarity()
+                : requestedMinSimilarity;
+        return clamp01(configured, VECTOR_SIMILARITY_DEFAULT);
     }
 
-    private double resolveHybridMinScore() {
-        return clamp01(knowledgeSearchProperties.getHybridMinScore(), HYBRID_SCORE_DEFAULT);
+    private double resolveHybridMinScore(Double requestedHybridMinScore) {
+        double configured = requestedHybridMinScore == null
+                ? knowledgeSearchProperties.getHybridMinScore()
+                : requestedHybridMinScore;
+        return clamp01(configured, HYBRID_SCORE_DEFAULT);
     }
 
-    private HybridWeights resolveHybridWeights() {
-        double keyword = Math.max(0, knowledgeSearchProperties.getHybridKeywordWeight());
-        double vector = Math.max(0, knowledgeSearchProperties.getHybridVectorWeight());
+    private HybridWeights resolveHybridWeights(Double requestedKeywordWeight, Double requestedVectorWeight) {
+        double keyword = Math.max(0, requestedKeywordWeight == null
+                ? knowledgeSearchProperties.getHybridKeywordWeight()
+                : requestedKeywordWeight);
+        double vector = Math.max(0, requestedVectorWeight == null
+                ? knowledgeSearchProperties.getHybridVectorWeight()
+                : requestedVectorWeight);
         double sum = keyword + vector;
         if (sum <= 0.00001) {
             return new HybridWeights(HYBRID_KEYWORD_WEIGHT_DEFAULT, HYBRID_VECTOR_WEIGHT_DEFAULT);
@@ -449,15 +477,32 @@ public class KnowledgeBaseService {
         };
     }
 
-    private Double resolveScoreThreshold(SearchMode searchMode, boolean blankQuery) {
+    private Double resolveScoreThreshold(SearchMode searchMode,
+                                         boolean blankQuery,
+                                         SearchRuntimePolicy runtimePolicy) {
         if (blankQuery) {
             return 0.0;
         }
         return switch (searchMode) {
             case KEYWORD -> 0.0;
-            case VECTOR -> resolveVectorMinSimilarity();
-            case HYBRID -> resolveHybridMinScore();
+            case VECTOR -> runtimePolicy.vectorMinSimilarity();
+            case HYBRID -> runtimePolicy.hybridMinScore();
         };
+    }
+
+    private SearchRuntimePolicy resolveRuntimePolicy(SearchOverrides overrides) {
+        Double vectorMinSimilarity = overrides == null ? null : overrides.vectorMinSimilarity();
+        Double hybridMinScore = overrides == null ? null : overrides.hybridMinScore();
+        Double hybridKeywordWeight = overrides == null ? null : overrides.hybridKeywordWeight();
+        Double hybridVectorWeight = overrides == null ? null : overrides.hybridVectorWeight();
+        Integer maxCandidates = overrides == null ? null : overrides.maxCandidates();
+        return new SearchRuntimePolicy(
+                resolveMaxCandidates(maxCandidates),
+                resolveVectorMinSimilarity(vectorMinSimilarity),
+                resolveHybridMinScore(hybridMinScore),
+                resolveHybridWeights(hybridKeywordWeight, hybridVectorWeight),
+                overrides != null && overrides.hasAny()
+        );
     }
 
     private double clamp01(double value, double fallback) {
@@ -476,6 +521,31 @@ public class KnowledgeBaseService {
     }
 
     private record HybridWeights(double keywordWeight, double vectorWeight) {
+    }
+
+    private record SearchRuntimePolicy(
+            int maxCandidates,
+            double vectorMinSimilarity,
+            double hybridMinScore,
+            HybridWeights hybridWeights,
+            boolean overrideApplied
+    ) {
+    }
+
+    public record SearchOverrides(
+            Double vectorMinSimilarity,
+            Double hybridMinScore,
+            Double hybridKeywordWeight,
+            Double hybridVectorWeight,
+            Integer maxCandidates
+    ) {
+        public boolean hasAny() {
+            return vectorMinSimilarity != null
+                    || hybridMinScore != null
+                    || hybridKeywordWeight != null
+                    || hybridVectorWeight != null
+                    || maxCandidates != null;
+        }
     }
 
     private enum SearchMode {

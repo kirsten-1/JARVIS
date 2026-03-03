@@ -1,5 +1,6 @@
 package com.bones.gateway.service.agent;
 
+import com.bones.gateway.dto.KnowledgeSearchResponse;
 import com.bones.gateway.dto.KnowledgeSnippetItemResponse;
 import com.bones.gateway.service.KnowledgeBaseService;
 import java.util.List;
@@ -48,6 +49,34 @@ public class WorkspaceKnowledgeSearchAgentTool implements AgentTool {
                                 "type", "string",
                                 "enum", List.of("keyword", "vector", "hybrid"),
                                 "description", "Retrieval mode. Default is hybrid"
+                        ),
+                        "vectorMinSimilarity", Map.of(
+                                "type", "number",
+                                "minimum", 0,
+                                "maximum", 1,
+                                "description", "Vector mode min similarity threshold override"
+                        ),
+                        "hybridMinScore", Map.of(
+                                "type", "number",
+                                "minimum", 0,
+                                "maximum", 1,
+                                "description", "Hybrid mode min final score threshold override"
+                        ),
+                        "hybridKeywordWeight", Map.of(
+                                "type", "number",
+                                "minimum", 0,
+                                "description", "Hybrid keyword weight override"
+                        ),
+                        "hybridVectorWeight", Map.of(
+                                "type", "number",
+                                "minimum", 0,
+                                "description", "Hybrid vector weight override"
+                        ),
+                        "maxCandidates", Map.of(
+                                "type", "integer",
+                                "minimum", 1,
+                                "maximum", 200,
+                                "description", "Search candidate size override before ranking"
                         )
                 ),
                 "required", List.of("query"),
@@ -60,10 +89,29 @@ public class WorkspaceKnowledgeSearchAgentTool implements AgentTool {
         String query = resolveQuery(context);
         int limit = resolveLimit(context);
         String searchMode = resolveSearchMode(context);
-        return "{\"workspaceId\":" + context.workspaceId()
-                + ",\"query\":\"" + escapeJson(query)
-                + "\",\"searchMode\":\"" + escapeJson(searchMode)
-                + "\",\"limit\":" + limit + "}";
+        KnowledgeBaseService.SearchOverrides overrides = resolveSearchOverrides(context);
+        StringBuilder input = new StringBuilder();
+        input.append("{\"workspaceId\":").append(context.workspaceId())
+                .append(",\"query\":\"").append(escapeJson(query))
+                .append("\",\"searchMode\":\"").append(escapeJson(searchMode))
+                .append("\",\"limit\":").append(limit);
+        if (overrides != null && overrides.vectorMinSimilarity() != null) {
+            input.append(",\"vectorMinSimilarity\":").append(overrides.vectorMinSimilarity());
+        }
+        if (overrides != null && overrides.hybridMinScore() != null) {
+            input.append(",\"hybridMinScore\":").append(overrides.hybridMinScore());
+        }
+        if (overrides != null && overrides.hybridKeywordWeight() != null) {
+            input.append(",\"hybridKeywordWeight\":").append(overrides.hybridKeywordWeight());
+        }
+        if (overrides != null && overrides.hybridVectorWeight() != null) {
+            input.append(",\"hybridVectorWeight\":").append(overrides.hybridVectorWeight());
+        }
+        if (overrides != null && overrides.maxCandidates() != null) {
+            input.append(",\"maxCandidates\":").append(overrides.maxCandidates());
+        }
+        input.append("}");
+        return input.toString();
     }
 
     @Override
@@ -77,17 +125,23 @@ public class WorkspaceKnowledgeSearchAgentTool implements AgentTool {
         }
         int limit = resolveLimit(context);
         String searchMode = resolveSearchMode(context);
-        List<KnowledgeSnippetItemResponse> items = knowledgeBaseService
-                .searchSnippets(context.userId(), context.workspaceId(), query, limit, searchMode)
-                .items();
+        KnowledgeBaseService.SearchOverrides overrides = resolveSearchOverrides(context);
+        KnowledgeSearchResponse searchResponse = knowledgeBaseService
+                .searchSnippets(context.userId(), context.workspaceId(), query, limit, searchMode, overrides);
+        List<KnowledgeSnippetItemResponse> items = searchResponse.items();
         if (items.isEmpty()) {
             return "no matched knowledge snippets for query=" + query;
         }
 
         StringBuilder output = new StringBuilder();
         output.append("query=").append(query)
-                .append(", searchMode=").append(searchMode)
+                .append(", searchMode=").append(searchResponse.searchMode())
                 .append(", matches=").append(items.size())
+                .append(", maxCandidates=").append(searchResponse.maxCandidates())
+                .append(", overrideApplied=").append(searchResponse.overrideApplied())
+                .append(", keywordWeight=").append(searchResponse.keywordWeight())
+                .append(", vectorWeight=").append(searchResponse.vectorWeight())
+                .append(", scoreThreshold=").append(searchResponse.scoreThreshold())
                 .append('\n');
         for (KnowledgeSnippetItemResponse item : items) {
             output.append("- id=").append(item.id())
@@ -141,6 +195,106 @@ public class WorkspaceKnowledgeSearchAgentTool implements AgentTool {
             return normalizeSearchMode(text);
         }
         return "hybrid";
+    }
+
+    private KnowledgeBaseService.SearchOverrides resolveSearchOverrides(AgentToolContext context) {
+        Double vectorMinSimilarity = resolveDoubleOption(
+                context,
+                "vectorMinSimilarity",
+                "knowledgeVectorMinSimilarity"
+        );
+        Double hybridMinScore = resolveDoubleOption(
+                context,
+                "hybridMinScore",
+                "knowledgeHybridMinScore"
+        );
+        Double hybridKeywordWeight = resolveDoubleOption(
+                context,
+                "hybridKeywordWeight",
+                "knowledgeHybridKeywordWeight"
+        );
+        Double hybridVectorWeight = resolveDoubleOption(
+                context,
+                "hybridVectorWeight",
+                "knowledgeHybridVectorWeight"
+        );
+        Integer maxCandidates = resolveIntegerOption(
+                context,
+                "maxCandidates",
+                "knowledgeMaxCandidates"
+        );
+        KnowledgeBaseService.SearchOverrides overrides = new KnowledgeBaseService.SearchOverrides(
+                vectorMinSimilarity,
+                hybridMinScore,
+                hybridKeywordWeight,
+                hybridVectorWeight,
+                maxCandidates
+        );
+        return overrides.hasAny() ? overrides : null;
+    }
+
+    private Double resolveDoubleOption(AgentToolContext context, String argName, String metadataKey) {
+        Object fromArg = context.toolArguments().get(argName);
+        Double parsedFromArg = parseDouble(fromArg);
+        if (parsedFromArg != null) {
+            return parsedFromArg;
+        }
+        Object fromMetadataMap = resolveMetadataMapValue(context, argName);
+        Double parsedFromMetadataMap = parseDouble(fromMetadataMap);
+        if (parsedFromMetadataMap != null) {
+            return parsedFromMetadataMap;
+        }
+        return parseDouble(context.metadata().get(metadataKey));
+    }
+
+    private Integer resolveIntegerOption(AgentToolContext context, String argName, String metadataKey) {
+        Object fromArg = context.toolArguments().get(argName);
+        Integer parsedFromArg = parseInteger(fromArg);
+        if (parsedFromArg != null) {
+            return parsedFromArg;
+        }
+        Object fromMetadataMap = resolveMetadataMapValue(context, argName);
+        Integer parsedFromMetadataMap = parseInteger(fromMetadataMap);
+        if (parsedFromMetadataMap != null) {
+            return parsedFromMetadataMap;
+        }
+        return parseInteger(context.metadata().get(metadataKey));
+    }
+
+    private Object resolveMetadataMapValue(AgentToolContext context, String key) {
+        Object raw = context.metadata().get("knowledgeSearchOverrides");
+        if (raw instanceof Map<?, ?> map) {
+            return map.get(key);
+        }
+        return null;
+    }
+
+    private Double parseDouble(Object raw) {
+        if (raw instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (raw instanceof String text && !text.isBlank()) {
+            try {
+                return Double.parseDouble(text.trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private Integer parseInteger(Object raw) {
+        if (raw instanceof Number number) {
+            return number.intValue();
+        }
+        if (raw instanceof String text && !text.isBlank()) {
+            try {
+                return Integer.parseInt(text.trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     private String normalizeSearchMode(String raw) {

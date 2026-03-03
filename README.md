@@ -4,7 +4,7 @@
 
 ## 文档导航
 
-- `docs/项目完整规划与里程碑.md`：M1-M17 完整规划与当前状态
+- `docs/项目完整规划与里程碑.md`：M1-M18 完整规划与当前状态
 - `docs/M1-工程骨架交付说明.md`：M1 详细交付内容
 - `docs/M3-网关基础能力交付说明.md`：M3 详细交付内容
 - `docs/M4-AI调用层交付说明.md`：M4 详细交付内容
@@ -24,6 +24,7 @@
 - `docs/M15-Agent知识检索最小闭环交付说明.md`：知识片段入库 + 检索 + Agent 知识工具首版
 - `docs/M16-Agent混合检索增强交付说明.md`：keyword/vector/hybrid 检索增强与向量化首版
 - `docs/M17-Agent检索调优与可运营化说明.md`：检索权重/阈值配置化与结果可解释增强
+- `docs/M18-Agent检索策略请求级覆盖说明.md`：请求级检索策略覆盖与 Agent 覆盖参数透传
 - `docs/多厂商AI使用指南.md`：多厂商接入与路由使用指南
 - `docs/产品不足与增强路线.md`：当前产品不足与可增强路线
 - `docs/启动问题排查记录.md`：启动问题排查沉淀
@@ -80,6 +81,7 @@
 | M15 | Agent 编排知识增强（知识片段 + 检索工具 + RAG 首批） | 1 天 | `completed` |
 | M16 | Agent 混合检索增强（keyword/vector/hybrid + embedding） | 1 天 | `completed` |
 | M17 | Agent 检索调优与可运营化（权重阈值配置 + 返回生效参数） | 1 天 | `completed` |
+| M18 | Agent 检索策略请求级覆盖（API/Agent override + 生效标记） | 1 天 | `completed` |
 
 ## M1 验收清单
 
@@ -284,6 +286,17 @@
 - [x] 补充单测覆盖：`KnowledgeBaseServiceTest`（权重归一化与阈值路径）
 - [x] 新增 M17 交付文档（`docs/M17-Agent检索调优与可运营化说明.md`）
 
+## M18 验收清单（已完成）
+
+- [x] 检索 API 增加请求级覆盖参数：`vectorMinSimilarity`、`hybridMinScore`、`hybridKeywordWeight`、`hybridVectorWeight`、`maxCandidates`
+- [x] 检索服务支持请求级覆盖策略（不改全局配置即可单次调参）
+- [x] 检索响应增加策略生效标记：`overrideApplied`、`maxCandidates`
+- [x] Agent 知识工具支持覆盖参数透传（tool args / metadata 两种输入）
+- [x] Agent 工具输出增加生效策略回显（便于审计与排障）
+- [x] 新增 M18 冒烟脚本：`scripts/m18_smoke.sh`
+- [x] 补充单测覆盖：`KnowledgeBaseServiceTest`（请求级 override 路径）
+- [x] 新增 M18 交付文档（`docs/M18-Agent检索策略请求级覆盖说明.md`）
+
 ## 当前目录结构（M1）
 
 ```text
@@ -448,6 +461,12 @@ M17 检索调优与可解释冒烟：
 
 ```bash
 ./scripts/m17_smoke.sh
+```
+
+M18 检索策略请求级覆盖冒烟：
+
+```bash
+./scripts/m18_smoke.sh
 ```
 
 ## 更新规则
@@ -630,3 +649,12 @@ M17 检索调优与可解释冒烟：
 - 完成配置模板补齐：`application-dev.yml`、`application-prod.yml`、`.env.example`、`.env.prod.example`。
 - 完成 M17 冒烟脚本：`scripts/m17_smoke.sh`（已验证通过）。
 - 完成 M17 交付文档：`docs/M17-Agent检索调优与可运营化说明.md`。
+
+### M18（完成时间：2026-03-03）
+
+- 完成检索 API 请求级策略覆盖：支持按请求传入权重/阈值/候选数，无需修改全局配置即可调参。
+- 完成检索响应可审计增强：新增 `overrideApplied` 与 `maxCandidates`，可直接判断本次请求是否触发覆盖策略。
+- 完成 Agent 知识工具策略透传：支持通过 tool args 与 `metadata.knowledgeSearchOverrides` 下发覆盖参数。
+- 完成 Agent 工具输出增强：回显 `keywordWeight/vectorWeight/scoreThreshold/overrideApplied` 便于编排日志排障。
+- 完成 M18 冒烟脚本：`scripts/m18_smoke.sh`（已验证通过）。
+- 完成 M18 交付文档：`docs/M18-Agent检索策略请求级覆盖说明.md`。
