@@ -4,7 +4,7 @@
 
 ## 文档导航
 
-- `docs/项目完整规划与里程碑.md`：M1-M14 完整规划与当前状态
+- `docs/项目完整规划与里程碑.md`：M1-M15 完整规划与当前状态
 - `docs/M1-工程骨架交付说明.md`：M1 详细交付内容
 - `docs/M3-网关基础能力交付说明.md`：M3 详细交付内容
 - `docs/M4-AI调用层交付说明.md`：M4 详细交付内容
@@ -21,6 +21,7 @@
 - `docs/M12-可观测与运维加固交付说明.md`：Prometheus/Grafana 观测栈与运维脚本
 - `docs/M13-Agent编排最小闭环交付说明.md`：Agent 最小闭环（Plan/Act/Observe/Respond）
 - `docs/M14-Agent编排策略与工具治理首版说明.md`：Agent 规划模式与工具治理（首版）
+- `docs/M15-Agent知识检索最小闭环交付说明.md`：知识片段入库 + 检索 + Agent 知识工具首版
 - `docs/多厂商AI使用指南.md`：多厂商接入与路由使用指南
 - `docs/产品不足与增强路线.md`：当前产品不足与可增强路线
 - `docs/启动问题排查记录.md`：启动问题排查沉淀
@@ -74,6 +75,7 @@
 | M12 | 可观测与运维加固（Prometheus + Grafana） | 1 天 | `completed` |
 | M13 | Agent 编排最小闭环（Plan/Act/Observe） | 1 天 | `completed` |
 | M14 | Agent 编排增强（LLM Planner + Tool Allowlist） | 1 天 | `completed` |
+| M15 | Agent 编排知识增强（知识片段 + 检索工具 + RAG 首批） | 1 天 | `completed` |
 
 ## M1 验收清单
 
@@ -245,6 +247,17 @@
 - [x] 增加工具级幂等键（`toolIdempotencyKey` + TTL）
 - [x] 增加工具级策略中心（集中策略解析与执行治理）
 
+## M15 验收清单（已完成）
+
+- [x] 新增知识库数据模型：`knowledge_snippet`（Flyway `V3`）
+- [x] 新增知识片段 API：创建/更新/删除/检索（workspace 范围）
+- [x] 新增知识检索服务：关键词匹配 + 轻量打分排序
+- [x] 新增 Agent 工具：`workspace_knowledge_search`
+- [x] Agent 规则规划新增知识检索触发关键词
+- [x] 新增 M15 冒烟脚本：`scripts/m15_smoke.sh`
+- [x] 新增单测：`KnowledgeBaseServiceTest`
+- [x] 新增 M15 交付文档（`docs/M15-Agent知识检索最小闭环交付说明.md`）
+
 ## 当前目录结构（M1）
 
 ```text
@@ -393,6 +406,12 @@ M13 Agent 闭环冒烟：
 ./scripts/m13_smoke.sh
 ```
 
+M15 知识检索闭环冒烟：
+
+```bash
+./scripts/m15_smoke.sh
+```
+
 ## 更新规则
 
 - 每次里程碑状态只使用：`pending` / `in_progress` / `completed`。
@@ -537,3 +556,20 @@ M13 Agent 闭环冒烟：
 - 完成会话内 Agent API：`POST /api/v1/conversations/{id}/agent/run`。
 - 完成 M13 冒烟脚本：`scripts/m13_smoke.sh`。
 - 完成 M13 交付文档：`docs/M13-Agent编排最小闭环交付说明.md`。
+
+### M14（完成时间：2026-03-02）
+
+- 完成 Agent 规划模式增强：`rule / llm_json / function_calling`。
+- 完成工具治理增强：`allowedTools`、工具执行策略、工具幂等键与策略中心。
+- 完成 Function Calling 协议适配与步骤审计聚合。
+- 完成 M14 交付文档：`docs/M14-Agent编排策略与工具治理首版说明.md`。
+
+### M15（完成时间：2026-03-03）
+
+- 完成知识片段最小数据层：`knowledge_snippet` 表与索引（Flyway `V3__knowledge_snippet_init.sql`）。
+- 完成知识片段 API：`POST/PUT/DELETE/GET /api/v1/knowledge/snippets`。
+- 完成知识检索服务：workspace 范围检索、关键词打分排序、结果裁剪。
+- 完成 Agent 知识工具：`workspace_knowledge_search`，支持 query/limit 参数。
+- 完成编排规则补充：用户问题命中知识关键词时自动规划知识检索工具。
+- 完成 M15 冒烟脚本：`scripts/m15_smoke.sh`（已验证通过）。
+- 完成 M15 交付文档：`docs/M15-Agent知识检索最小闭环交付说明.md`。

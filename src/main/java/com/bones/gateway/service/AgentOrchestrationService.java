@@ -23,6 +23,7 @@ import com.bones.gateway.service.agent.AgentToolPolicyCenter.ToolExecutionPolicy
 import com.bones.gateway.service.agent.AgentToolRegistry;
 import com.bones.gateway.service.agent.ConversationDigestAgentTool;
 import com.bones.gateway.service.agent.TimeNowAgentTool;
+import com.bones.gateway.service.agent.WorkspaceKnowledgeSearchAgentTool;
 import com.bones.gateway.service.agent.WorkspaceMetricsOverviewAgentTool;
 import com.bones.gateway.service.BillingService.UsageSource;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -48,6 +49,7 @@ public class AgentOrchestrationService {
     private static final String TOOL_TIME_NOW = TimeNowAgentTool.NAME;
     private static final String TOOL_WORKSPACE_METRICS = WorkspaceMetricsOverviewAgentTool.NAME;
     private static final String TOOL_CONVERSATION_DIGEST = ConversationDigestAgentTool.NAME;
+    private static final String TOOL_WORKSPACE_KNOWLEDGE = WorkspaceKnowledgeSearchAgentTool.NAME;
     private static final String PLANNER_MODE_RULE = "rule";
     private static final String PLANNER_MODE_LLM_JSON = "llm_json";
     private static final String PLANNER_MODE_FUNCTION_CALLING = "function_calling";
@@ -55,6 +57,7 @@ public class AgentOrchestrationService {
     private static final String METADATA_ALLOWED_TOOLS = "allowedTools";
     private static final String METADATA_TOOL_IDEMPOTENCY_KEY = "toolIdempotencyKey";
     private static final String METADATA_FC_MAX_ROUNDS = "functionCallingMaxRounds";
+    private static final String METADATA_AGENT_USER_INPUT = "agentUserInput";
 
     private static final String META_OPENAI_TOOLS = "openaiTools";
     private static final String META_OPENAI_TOOL_CHOICE = "openaiToolChoice";
@@ -118,9 +121,10 @@ public class AgentOrchestrationService {
 
         try {
             String userInput = request.message().trim();
+            Map<String, Object> executionMetadata = buildExecutionMetadata(request.metadata(), userInput);
             int maxSteps = request.maxSteps() == null ? DEFAULT_MAX_STEPS : request.maxSteps();
-            String plannerMode = resolvePlannerMode(request.metadata());
-            List<String> allowedTools = resolveAllowedTools(request.metadata());
+            String plannerMode = resolvePlannerMode(executionMetadata);
+            List<String> allowedTools = resolveAllowedTools(executionMetadata);
             List<AgentStepResult> stepResults;
             if (PLANNER_MODE_FUNCTION_CALLING.equals(plannerMode)) {
                 stepResults = executeToolPlanByFunctionCalling(
@@ -131,7 +135,7 @@ public class AgentOrchestrationService {
                         conversation.getWorkspaceId(),
                         request.provider(),
                         request.model(),
-                        request.metadata(),
+                        executionMetadata,
                         allowedTools
                 );
                 if (stepResults.isEmpty()) {
@@ -141,7 +145,7 @@ public class AgentOrchestrationService {
                             conversationId,
                             request.userId(),
                             conversation.getWorkspaceId(),
-                            request.metadata()
+                            executionMetadata
                     );
                 }
             } else {
@@ -160,7 +164,7 @@ public class AgentOrchestrationService {
                         conversationId,
                         request.userId(),
                         conversation.getWorkspaceId(),
-                        request.metadata()
+                        executionMetadata
                 );
             }
 
@@ -182,7 +186,7 @@ public class AgentOrchestrationService {
                     request.provider(),
                     request.model(),
                     promptMessages,
-                    buildAgentMetadata(request.metadata(), stepResults, plannerMode, allowedTools)
+                    buildAgentMetadata(executionMetadata, stepResults, plannerMode, allowedTools)
             );
             AiChatResponse aiResponse = aiServiceClient.chat(aiRequest).block();
             if (aiResponse == null || !hasText(aiResponse.content())) {
@@ -598,6 +602,9 @@ public class AgentOrchestrationService {
         if (containsAny(normalized, "总结", "摘要", "回顾", "history", "context", "上下文")) {
             tools.add(TOOL_CONVERSATION_DIGEST);
         }
+        if (containsAny(normalized, "知识库", "文档", "资料", "kb", "rag", "manual", "wiki", "检索")) {
+            tools.add(TOOL_WORKSPACE_KNOWLEDGE);
+        }
 
         tools = tools.stream().filter(allowedTools::contains).toList();
         int safeMaxSteps = Math.max(1, Math.min(maxSteps, 6));
@@ -761,6 +768,15 @@ public class AgentOrchestrationService {
             }
         }
         return false;
+    }
+
+    private Map<String, Object> buildExecutionMetadata(Map<String, Object> metadata, String userInput) {
+        Map<String, Object> merged = new HashMap<>();
+        if (metadata != null) {
+            merged.putAll(metadata);
+        }
+        merged.put(METADATA_AGENT_USER_INPUT, userInput);
+        return merged;
     }
 
     private String resolvePlannerMode(Map<String, Object> metadata) {
