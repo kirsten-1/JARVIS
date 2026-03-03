@@ -9,6 +9,7 @@ public record KnowledgeSearchResponse(
         int limit,
         int maxCandidates,
         boolean overrideApplied,
+        String overrideSource,
         Double keywordWeight,
         Double vectorWeight,
         Double scoreThreshold,

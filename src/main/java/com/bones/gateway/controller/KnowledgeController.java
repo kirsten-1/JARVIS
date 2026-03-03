@@ -103,8 +103,14 @@ public class KnowledgeController {
                 maxCandidates
         );
         KnowledgeBaseService.SearchOverrides effectiveOverrides = requestOverrides;
+        String overrideSource = requestOverrides != null && requestOverrides.hasAny()
+                ? "request_override"
+                : "none";
         if (effectiveOverrides == null && autoTune) {
-            effectiveOverrides = knowledgeRetrievalPolicyService.resolveAutoTuneOverrides(targetUserId, workspaceId);
+            KnowledgeRetrievalPolicyService.AutoTuneDecision autoTuneDecision =
+                    knowledgeRetrievalPolicyService.resolveAutoTuneDecision(targetUserId, workspaceId);
+            effectiveOverrides = autoTuneDecision.overrides();
+            overrideSource = autoTuneDecision.overrideSource();
         }
         return ApiResponse.success(knowledgeBaseService.searchSnippets(
                 targetUserId,
@@ -112,7 +118,8 @@ public class KnowledgeController {
                 query,
                 limit,
                 searchMode,
-                effectiveOverrides
+                effectiveOverrides,
+                overrideSource
         ));
     }
 

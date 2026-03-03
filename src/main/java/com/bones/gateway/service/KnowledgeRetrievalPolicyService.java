@@ -1,16 +1,25 @@
 package com.bones.gateway.service;
 
+import com.bones.gateway.common.BusinessException;
+import com.bones.gateway.common.ErrorCode;
 import com.bones.gateway.config.KnowledgeSearchProperties;
 import com.bones.gateway.dto.KnowledgeRetrievalFeedbackRequest;
 import com.bones.gateway.dto.KnowledgeRetrievalFeedbackResponse;
+import com.bones.gateway.dto.KnowledgeRetrievalPolicyRequest;
+import com.bones.gateway.dto.KnowledgeRetrievalPolicyResponse;
 import com.bones.gateway.dto.KnowledgeRetrievalRecommendationResponse;
+import com.bones.gateway.entity.KnowledgeRetrievalPolicy;
+import com.bones.gateway.entity.KnowledgeRetrievalPolicyMode;
+import com.bones.gateway.repository.KnowledgeRetrievalPolicyRepository;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import org.springframework.http.HttpStatus;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -23,13 +32,16 @@ public class KnowledgeRetrievalPolicyService {
     private final StringRedisTemplate stringRedisTemplate;
     private final WorkspaceService workspaceService;
     private final KnowledgeSearchProperties knowledgeSearchProperties;
+    private final KnowledgeRetrievalPolicyRepository knowledgeRetrievalPolicyRepository;
 
     public KnowledgeRetrievalPolicyService(StringRedisTemplate stringRedisTemplate,
                                            WorkspaceService workspaceService,
-                                           KnowledgeSearchProperties knowledgeSearchProperties) {
+                                           KnowledgeSearchProperties knowledgeSearchProperties,
+                                           KnowledgeRetrievalPolicyRepository knowledgeRetrievalPolicyRepository) {
         this.stringRedisTemplate = stringRedisTemplate;
         this.workspaceService = workspaceService;
         this.knowledgeSearchProperties = knowledgeSearchProperties;
+        this.knowledgeRetrievalPolicyRepository = knowledgeRetrievalPolicyRepository;
     }
 
     public KnowledgeRetrievalFeedbackResponse recordFeedback(Long userId, KnowledgeRetrievalFeedbackRequest request) {
@@ -123,24 +135,175 @@ public class KnowledgeRetrievalPolicyService {
         );
     }
 
-    public KnowledgeBaseService.SearchOverrides resolveAutoTuneOverrides(Long userId, Long workspaceId) {
+    public KnowledgeRetrievalPolicyResponse getPolicy(Long userId, Long workspaceId) {
+        Long resolvedWorkspaceId = workspaceService.resolveWorkspaceId(workspaceId, userId);
+        workspaceService.assertMember(resolvedWorkspaceId, userId);
+        KnowledgeRetrievalPolicy policy = knowledgeRetrievalPolicyRepository.findByWorkspaceId(resolvedWorkspaceId)
+                .orElse(null);
+        if (policy == null) {
+            return new KnowledgeRetrievalPolicyResponse(
+                    resolvedWorkspaceId,
+                    KnowledgeRetrievalPolicyMode.RECOMMEND.name(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null
+            );
+        }
+        return toPolicyResponse(policy);
+    }
+
+    public KnowledgeRetrievalPolicyResponse upsertPolicy(Long userId, KnowledgeRetrievalPolicyRequest request) {
+        Long resolvedWorkspaceId = workspaceService.resolveWorkspaceId(request.workspaceId(), userId);
+        workspaceService.assertCanManage(resolvedWorkspaceId, userId);
+        KnowledgeRetrievalPolicyMode mode = parsePolicyMode(request.mode());
+        ManualPolicy manualPolicy = normalizeManualPolicy(
+                request.keywordWeight(),
+                request.vectorWeight(),
+                request.hybridMinScore(),
+                request.maxCandidates()
+        );
+        if (mode == KnowledgeRetrievalPolicyMode.MANUAL && !manualPolicy.hasAny()) {
+            throw new BusinessException(
+                    ErrorCode.BAD_REQUEST,
+                    "manual mode requires at least one override value",
+                    HttpStatus.BAD_REQUEST
+            );
+        }
+        KnowledgeRetrievalPolicy policy = knowledgeRetrievalPolicyRepository.findByWorkspaceId(resolvedWorkspaceId)
+                .orElseGet(() -> KnowledgeRetrievalPolicy.builder()
+                        .workspaceId(resolvedWorkspaceId)
+                        .build());
+        policy.setMode(mode);
+        policy.setKeywordWeight(manualPolicy.keywordWeight());
+        policy.setVectorWeight(manualPolicy.vectorWeight());
+        policy.setHybridMinScore(manualPolicy.hybridMinScore());
+        policy.setMaxCandidates(manualPolicy.maxCandidates());
+        policy.setUpdatedBy(userId);
+        KnowledgeRetrievalPolicy saved = knowledgeRetrievalPolicyRepository.save(policy);
+        return toPolicyResponse(saved);
+    }
+
+    public AutoTuneDecision resolveAutoTuneDecision(Long userId, Long workspaceId) {
+        Long resolvedWorkspaceId = workspaceService.resolveWorkspaceId(workspaceId, userId);
+        workspaceService.assertMember(resolvedWorkspaceId, userId);
+        KnowledgeRetrievalPolicy policy = knowledgeRetrievalPolicyRepository.findByWorkspaceId(resolvedWorkspaceId)
+                .orElse(null);
+        KnowledgeRetrievalPolicyMode mode = policy == null ? KnowledgeRetrievalPolicyMode.RECOMMEND : policy.getMode();
+        if (mode == KnowledgeRetrievalPolicyMode.OFF) {
+            return new AutoTuneDecision(null, "none", mode.name(), resolvedWorkspaceId);
+        }
+        if (mode == KnowledgeRetrievalPolicyMode.MANUAL) {
+            KnowledgeBaseService.SearchOverrides manualOverrides = toManualOverrides(policy);
+            if (manualOverrides != null && manualOverrides.hasAny()) {
+                return new AutoTuneDecision(
+                        manualOverrides,
+                        "workspace_manual_policy",
+                        mode.name(),
+                        resolvedWorkspaceId
+                );
+            }
+            return new AutoTuneDecision(null, "none", mode.name(), resolvedWorkspaceId);
+        }
         KnowledgeRetrievalRecommendationResponse recommendation = getRecommendation(
                 userId,
-                workspaceId,
+                resolvedWorkspaceId,
                 LocalDate.now().minusDays(6),
                 LocalDate.now(),
                 DEFAULT_MIN_SAMPLES
         );
         if (recommendation.feedbackCount() < recommendation.minSamples()) {
+            return new AutoTuneDecision(null, "none", mode.name(), resolvedWorkspaceId);
+        }
+        return new AutoTuneDecision(
+                new KnowledgeBaseService.SearchOverrides(
+                        null,
+                        recommendation.suggestedHybridMinScore(),
+                        recommendation.suggestedKeywordWeight(),
+                        recommendation.suggestedVectorWeight(),
+                        recommendation.suggestedMaxCandidates()
+                ),
+                "auto_recommendation",
+                mode.name(),
+                resolvedWorkspaceId
+        );
+    }
+
+    public KnowledgeBaseService.SearchOverrides resolveAutoTuneOverrides(Long userId, Long workspaceId) {
+        return resolveAutoTuneDecision(userId, workspaceId).overrides();
+    }
+
+    private KnowledgeRetrievalPolicyResponse toPolicyResponse(KnowledgeRetrievalPolicy policy) {
+        return new KnowledgeRetrievalPolicyResponse(
+                policy.getWorkspaceId(),
+                policy.getMode().name(),
+                policy.getKeywordWeight(),
+                policy.getVectorWeight(),
+                policy.getHybridMinScore(),
+                policy.getMaxCandidates(),
+                policy.getUpdatedBy(),
+                policy.getUpdatedAt()
+        );
+    }
+
+    private KnowledgeRetrievalPolicyMode parsePolicyMode(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return KnowledgeRetrievalPolicyMode.RECOMMEND;
+        }
+        String normalized = raw.trim().toUpperCase(Locale.ROOT);
+        try {
+            return KnowledgeRetrievalPolicyMode.valueOf(normalized);
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException(
+                    ErrorCode.BAD_REQUEST,
+                    "invalid policy mode: " + raw + ", expected RECOMMEND/MANUAL/OFF",
+                    HttpStatus.BAD_REQUEST
+            );
+        }
+    }
+
+    private ManualPolicy normalizeManualPolicy(Double keywordWeight,
+                                               Double vectorWeight,
+                                               Double hybridMinScore,
+                                               Integer maxCandidates) {
+        Double safeKeyword = clamp01OrNull(keywordWeight);
+        Double safeVector = clamp01OrNull(vectorWeight);
+        Double safeHybridMinScore = clamp01OrNull(hybridMinScore);
+        Integer safeMaxCandidates = clampMaxCandidates(maxCandidates);
+
+        if (safeKeyword != null || safeVector != null) {
+            if (safeKeyword == null) {
+                safeKeyword = Math.max(0.0, 1.0 - safeVector);
+            }
+            if (safeVector == null) {
+                safeVector = Math.max(0.0, 1.0 - safeKeyword);
+            }
+            double sum = safeKeyword + safeVector;
+            if (sum <= 0.00001) {
+                safeKeyword = 0.65;
+                safeVector = 0.35;
+            } else {
+                safeKeyword = safeKeyword / sum;
+                safeVector = safeVector / sum;
+            }
+        }
+        return new ManualPolicy(safeKeyword, safeVector, safeHybridMinScore, safeMaxCandidates);
+    }
+
+    private KnowledgeBaseService.SearchOverrides toManualOverrides(KnowledgeRetrievalPolicy policy) {
+        if (policy == null) {
             return null;
         }
-        return new KnowledgeBaseService.SearchOverrides(
+        KnowledgeBaseService.SearchOverrides overrides = new KnowledgeBaseService.SearchOverrides(
                 null,
-                recommendation.suggestedHybridMinScore(),
-                recommendation.suggestedKeywordWeight(),
-                recommendation.suggestedVectorWeight(),
-                recommendation.suggestedMaxCandidates()
+                policy.getHybridMinScore(),
+                policy.getKeywordWeight(),
+                policy.getVectorWeight(),
+                policy.getMaxCandidates()
         );
+        return overrides.hasAny() ? overrides : null;
     }
 
     private AggregatedFeedback aggregateFeedback(Long workspaceId, LocalDate from, LocalDate to) {
@@ -372,6 +535,28 @@ public class KnowledgeRetrievalPolicyService {
             double hybridMinScore,
             int maxCandidates,
             String decision
+    ) {
+    }
+
+    private record ManualPolicy(
+            Double keywordWeight,
+            Double vectorWeight,
+            Double hybridMinScore,
+            Integer maxCandidates
+    ) {
+        private boolean hasAny() {
+            return keywordWeight != null
+                    || vectorWeight != null
+                    || hybridMinScore != null
+                    || maxCandidates != null;
+        }
+    }
+
+    public record AutoTuneDecision(
+            KnowledgeBaseService.SearchOverrides overrides,
+            String overrideSource,
+            String mode,
+            Long workspaceId
     ) {
     }
 }

@@ -108,6 +108,17 @@ public class KnowledgeBaseService {
                                                   Integer limit,
                                                   String searchMode,
                                                   SearchOverrides overrides) {
+        return searchSnippets(userId, workspaceId, query, limit, searchMode, overrides, null);
+    }
+
+    @Transactional(readOnly = true)
+    public KnowledgeSearchResponse searchSnippets(Long userId,
+                                                  Long workspaceId,
+                                                  String query,
+                                                  Integer limit,
+                                                  String searchMode,
+                                                  SearchOverrides overrides,
+                                                  String overrideSource) {
         Long resolvedWorkspaceId = workspaceService.resolveWorkspaceId(workspaceId, userId);
         int safeLimit = resolveLimit(limit);
         String normalizedQuery = normalizeQuery(query);
@@ -175,6 +186,7 @@ public class KnowledgeBaseService {
                 safeLimit,
                 maxCandidates,
                 runtimePolicy.overrideApplied(),
+                resolveOverrideSource(runtimePolicy.overrideApplied(), overrideSource),
                 resolveKeywordWeight(mode, hybridWeights),
                 resolveVectorWeight(mode, hybridWeights),
                 resolveScoreThreshold(mode, normalizedQuery.isBlank(), runtimePolicy),
@@ -488,6 +500,16 @@ public class KnowledgeBaseService {
             case VECTOR -> runtimePolicy.vectorMinSimilarity();
             case HYBRID -> runtimePolicy.hybridMinScore();
         };
+    }
+
+    private String resolveOverrideSource(boolean overrideApplied, String overrideSource) {
+        if (!overrideApplied) {
+            return "none";
+        }
+        if (overrideSource == null || overrideSource.isBlank()) {
+            return "request_override";
+        }
+        return overrideSource.trim().toLowerCase(Locale.ROOT);
     }
 
     private SearchRuntimePolicy resolveRuntimePolicy(SearchOverrides overrides) {

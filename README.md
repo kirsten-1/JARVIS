@@ -4,7 +4,7 @@
 
 ## 文档导航
 
-- `docs/项目完整规划与里程碑.md`：M1-M19 完整规划与当前状态
+- `docs/项目完整规划与里程碑.md`：M1-M20 完整规划与当前状态
 - `docs/M1-工程骨架交付说明.md`：M1 详细交付内容
 - `docs/M3-网关基础能力交付说明.md`：M3 详细交付内容
 - `docs/M4-AI调用层交付说明.md`：M4 详细交付内容
@@ -26,6 +26,7 @@
 - `docs/M17-Agent检索调优与可运营化说明.md`：检索权重/阈值配置化与结果可解释增强
 - `docs/M18-Agent检索策略请求级覆盖说明.md`：请求级检索策略覆盖与 Agent 覆盖参数透传
 - `docs/M19-Agent检索反馈闭环与自动调优说明.md`：检索反馈采集、策略推荐与 autoTune 闭环
+- `docs/M20-Agent检索策略治理与来源审计说明.md`：workspace 策略模式治理（RECOMMEND/MANUAL/OFF）与 `overrideSource` 审计
 - `docs/多厂商AI使用指南.md`：多厂商接入与路由使用指南
 - `docs/产品不足与增强路线.md`：当前产品不足与可增强路线
 - `docs/启动问题排查记录.md`：启动问题排查沉淀
@@ -84,6 +85,7 @@
 | M17 | Agent 检索调优与可运营化（权重阈值配置 + 返回生效参数） | 1 天 | `completed` |
 | M18 | Agent 检索策略请求级覆盖（API/Agent override + 生效标记） | 1 天 | `completed` |
 | M19 | Agent 检索反馈闭环与自动调优（feedback -> recommendation -> autoTune） | 1 天 | `completed` |
+| M20 | Agent 检索策略治理与来源审计（workspace policy mode + overrideSource） | 1 天 | `completed` |
 
 ## M1 验收清单
 
@@ -310,6 +312,18 @@
 - [x] 新增单测：`KnowledgeRetrievalPolicyServiceTest`
 - [x] 新增 M19 交付文档（`docs/M19-Agent检索反馈闭环与自动调优说明.md`）
 
+## M20 验收清单（已完成）
+
+- [x] 新增 workspace 检索策略治理 API：`GET/PUT /api/v1/knowledge/retrieval/policy`
+- [x] 新增策略模式：`RECOMMEND` / `MANUAL` / `OFF`
+- [x] 新增持久化策略表：`knowledge_retrieval_policy`（Flyway `V5__knowledge_retrieval_policy.sql`）
+- [x] 搜索响应新增来源审计字段：`overrideSource`
+- [x] `autoTune` 决策链支持来源区分：`request_override` / `workspace_manual_policy` / `auto_recommendation` / `none`
+- [x] Agent 知识工具输出增加 `overrideSource` 回显
+- [x] 新增 M20 冒烟脚本：`scripts/m20_smoke.sh`
+- [x] 补充单测：`KnowledgeRetrievalPolicyServiceTest`（策略模式与配置更新路径）
+- [x] 新增 M20 交付文档（`docs/M20-Agent检索策略治理与来源审计说明.md`）
+
 ## 当前目录结构（M1）
 
 ```text
@@ -486,6 +500,12 @@ M19 检索反馈闭环与自动调优冒烟：
 
 ```bash
 ./scripts/m19_smoke.sh
+```
+
+M20 检索策略治理与来源审计冒烟：
+
+```bash
+./scripts/m20_smoke.sh
 ```
 
 ## 更新规则
@@ -686,3 +706,13 @@ M19 检索反馈闭环与自动调优冒烟：
 - 完成 M19 冒烟脚本：`scripts/m19_smoke.sh`（已验证通过）。
 - 完成 M19 单测：`KnowledgeRetrievalPolicyServiceTest`。
 - 完成 M19 交付文档：`docs/M19-Agent检索反馈闭环与自动调优说明.md`。
+
+### M20（完成时间：2026-03-03）
+
+- 完成 workspace 检索策略治理：新增 `RECOMMEND/MANUAL/OFF` 三种模式，支持 workspace 管理员持久化策略配置。
+- 完成来源审计能力：检索响应新增 `overrideSource`，可区分请求覆盖、手动策略、自动推荐与未覆盖。
+- 完成 autoTune 决策升级：支持优先读取 workspace 手动策略，其次反馈推荐策略，支持全局关闭（OFF）。
+- 完成数据库迁移：`V5__knowledge_retrieval_policy.sql`。
+- 完成 M20 冒烟脚本：`scripts/m20_smoke.sh`（已验证通过）。
+- 完成 M20 单测：`KnowledgeRetrievalPolicyServiceTest`（新增策略模式相关用例）。
+- 完成 M20 交付文档：`docs/M20-Agent检索策略治理与来源审计说明.md`。

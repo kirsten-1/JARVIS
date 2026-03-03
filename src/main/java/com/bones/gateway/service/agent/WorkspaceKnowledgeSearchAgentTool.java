@@ -98,13 +98,15 @@ public class WorkspaceKnowledgeSearchAgentTool implements AgentTool {
         int limit = resolveLimit(context);
         String searchMode = resolveSearchMode(context);
         boolean autoTune = resolveAutoTune(context);
-        KnowledgeBaseService.SearchOverrides overrides = resolveSearchOverrides(context, autoTune);
+        SearchPolicyResolution policyResolution = resolveSearchPolicy(context, autoTune);
+        KnowledgeBaseService.SearchOverrides overrides = policyResolution.overrides();
         StringBuilder input = new StringBuilder();
         input.append("{\"workspaceId\":").append(context.workspaceId())
                 .append(",\"query\":\"").append(escapeJson(query))
                 .append("\",\"searchMode\":\"").append(escapeJson(searchMode))
                 .append("\",\"limit\":").append(limit);
         input.append(",\"autoTune\":").append(autoTune);
+        input.append(",\"overrideSource\":\"").append(escapeJson(policyResolution.overrideSource())).append("\"");
         if (overrides != null && overrides.vectorMinSimilarity() != null) {
             input.append(",\"vectorMinSimilarity\":").append(overrides.vectorMinSimilarity());
         }
@@ -136,9 +138,18 @@ public class WorkspaceKnowledgeSearchAgentTool implements AgentTool {
         int limit = resolveLimit(context);
         String searchMode = resolveSearchMode(context);
         boolean autoTune = resolveAutoTune(context);
-        KnowledgeBaseService.SearchOverrides overrides = resolveSearchOverrides(context, autoTune);
+        SearchPolicyResolution policyResolution = resolveSearchPolicy(context, autoTune);
+        KnowledgeBaseService.SearchOverrides overrides = policyResolution.overrides();
         KnowledgeSearchResponse searchResponse = knowledgeBaseService
-                .searchSnippets(context.userId(), context.workspaceId(), query, limit, searchMode, overrides);
+                .searchSnippets(
+                        context.userId(),
+                        context.workspaceId(),
+                        query,
+                        limit,
+                        searchMode,
+                        overrides,
+                        policyResolution.overrideSource()
+                );
         List<KnowledgeSnippetItemResponse> items = searchResponse.items();
         if (items.isEmpty()) {
             return "no matched knowledge snippets for query=" + query;
@@ -150,6 +161,7 @@ public class WorkspaceKnowledgeSearchAgentTool implements AgentTool {
                 .append(", matches=").append(items.size())
                 .append(", maxCandidates=").append(searchResponse.maxCandidates())
                 .append(", overrideApplied=").append(searchResponse.overrideApplied())
+                .append(", overrideSource=").append(searchResponse.overrideSource())
                 .append(", autoTune=").append(autoTune)
                 .append(", keywordWeight=").append(searchResponse.keywordWeight())
                 .append(", vectorWeight=").append(searchResponse.vectorWeight())
@@ -209,7 +221,7 @@ public class WorkspaceKnowledgeSearchAgentTool implements AgentTool {
         return "hybrid";
     }
 
-    private KnowledgeBaseService.SearchOverrides resolveSearchOverrides(AgentToolContext context, boolean autoTune) {
+    private SearchPolicyResolution resolveSearchPolicy(AgentToolContext context, boolean autoTune) {
         Double vectorMinSimilarity = resolveDoubleOption(
                 context,
                 "vectorMinSimilarity",
@@ -243,12 +255,14 @@ public class WorkspaceKnowledgeSearchAgentTool implements AgentTool {
                 maxCandidates
         );
         if (overrides.hasAny()) {
-            return overrides;
+            return new SearchPolicyResolution(overrides, "request_override");
         }
         if (!autoTune) {
-            return null;
+            return new SearchPolicyResolution(null, "none");
         }
-        return knowledgeRetrievalPolicyService.resolveAutoTuneOverrides(context.userId(), context.workspaceId());
+        KnowledgeRetrievalPolicyService.AutoTuneDecision autoTuneDecision =
+                knowledgeRetrievalPolicyService.resolveAutoTuneDecision(context.userId(), context.workspaceId());
+        return new SearchPolicyResolution(autoTuneDecision.overrides(), autoTuneDecision.overrideSource());
     }
 
     private boolean resolveAutoTune(AgentToolContext context) {
@@ -370,5 +384,11 @@ public class WorkspaceKnowledgeSearchAgentTool implements AgentTool {
 
     private String escapeJson(String value) {
         return value.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    private record SearchPolicyResolution(
+            KnowledgeBaseService.SearchOverrides overrides,
+            String overrideSource
+    ) {
     }
 }

@@ -3,6 +3,8 @@ package com.bones.gateway.controller;
 import com.bones.gateway.common.ApiResponse;
 import com.bones.gateway.dto.KnowledgeRetrievalFeedbackRequest;
 import com.bones.gateway.dto.KnowledgeRetrievalFeedbackResponse;
+import com.bones.gateway.dto.KnowledgeRetrievalPolicyRequest;
+import com.bones.gateway.dto.KnowledgeRetrievalPolicyResponse;
 import com.bones.gateway.dto.KnowledgeRetrievalRecommendationResponse;
 import com.bones.gateway.security.AccessControlService;
 import com.bones.gateway.service.KnowledgeRetrievalPolicyService;
@@ -14,6 +16,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -58,5 +61,20 @@ public class KnowledgeRetrievalController {
                 to,
                 minSamples
         ));
+    }
+
+    @GetMapping("/policy")
+    public ApiResponse<KnowledgeRetrievalPolicyResponse> getPolicy(
+            @RequestParam(value = "userId", required = false) Long userId,
+            @RequestParam(value = "workspaceId", required = false) Long workspaceId) {
+        Long targetUserId = accessControlService.resolveUserId(userId);
+        return ApiResponse.success(knowledgeRetrievalPolicyService.getPolicy(targetUserId, workspaceId));
+    }
+
+    @PutMapping("/policy")
+    public ApiResponse<KnowledgeRetrievalPolicyResponse> upsertPolicy(
+            @Valid @RequestBody KnowledgeRetrievalPolicyRequest request) {
+        Long userId = accessControlService.resolveUserId(request.userId());
+        return ApiResponse.success(knowledgeRetrievalPolicyService.upsertPolicy(userId, request));
     }
 }
