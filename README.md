@@ -4,7 +4,7 @@
 
 ## 文档导航
 
-- `docs/项目完整规划与里程碑.md`：M1-M18 完整规划与当前状态
+- `docs/项目完整规划与里程碑.md`：M1-M19 完整规划与当前状态
 - `docs/M1-工程骨架交付说明.md`：M1 详细交付内容
 - `docs/M3-网关基础能力交付说明.md`：M3 详细交付内容
 - `docs/M4-AI调用层交付说明.md`：M4 详细交付内容
@@ -25,6 +25,7 @@
 - `docs/M16-Agent混合检索增强交付说明.md`：keyword/vector/hybrid 检索增强与向量化首版
 - `docs/M17-Agent检索调优与可运营化说明.md`：检索权重/阈值配置化与结果可解释增强
 - `docs/M18-Agent检索策略请求级覆盖说明.md`：请求级检索策略覆盖与 Agent 覆盖参数透传
+- `docs/M19-Agent检索反馈闭环与自动调优说明.md`：检索反馈采集、策略推荐与 autoTune 闭环
 - `docs/多厂商AI使用指南.md`：多厂商接入与路由使用指南
 - `docs/产品不足与增强路线.md`：当前产品不足与可增强路线
 - `docs/启动问题排查记录.md`：启动问题排查沉淀
@@ -82,6 +83,7 @@
 | M16 | Agent 混合检索增强（keyword/vector/hybrid + embedding） | 1 天 | `completed` |
 | M17 | Agent 检索调优与可运营化（权重阈值配置 + 返回生效参数） | 1 天 | `completed` |
 | M18 | Agent 检索策略请求级覆盖（API/Agent override + 生效标记） | 1 天 | `completed` |
+| M19 | Agent 检索反馈闭环与自动调优（feedback -> recommendation -> autoTune） | 1 天 | `completed` |
 
 ## M1 验收清单
 
@@ -297,6 +299,17 @@
 - [x] 补充单测覆盖：`KnowledgeBaseServiceTest`（请求级 override 路径）
 - [x] 新增 M18 交付文档（`docs/M18-Agent检索策略请求级覆盖说明.md`）
 
+## M19 验收清单（已完成）
+
+- [x] 新增检索反馈 API：`POST /api/v1/knowledge/retrieval/feedback`
+- [x] 新增策略推荐 API：`GET /api/v1/knowledge/retrieval/recommendation`
+- [x] 新增反馈聚合服务：`KnowledgeRetrievalPolicyService`（按 workspace 聚合反馈并产出推荐参数）
+- [x] 检索接口新增 `autoTune` 开关：无显式 override 时可自动套用推荐策略
+- [x] Agent 知识工具新增 `autoTune` 与 `knowledgeAutoTune`（metadata）支持
+- [x] 新增 M19 冒烟脚本：`scripts/m19_smoke.sh`
+- [x] 新增单测：`KnowledgeRetrievalPolicyServiceTest`
+- [x] 新增 M19 交付文档（`docs/M19-Agent检索反馈闭环与自动调优说明.md`）
+
 ## 当前目录结构（M1）
 
 ```text
@@ -467,6 +480,12 @@ M18 检索策略请求级覆盖冒烟：
 
 ```bash
 ./scripts/m18_smoke.sh
+```
+
+M19 检索反馈闭环与自动调优冒烟：
+
+```bash
+./scripts/m19_smoke.sh
 ```
 
 ## 更新规则
@@ -658,3 +677,12 @@ M18 检索策略请求级覆盖冒烟：
 - 完成 Agent 工具输出增强：回显 `keywordWeight/vectorWeight/scoreThreshold/overrideApplied` 便于编排日志排障。
 - 完成 M18 冒烟脚本：`scripts/m18_smoke.sh`（已验证通过）。
 - 完成 M18 交付文档：`docs/M18-Agent检索策略请求级覆盖说明.md`。
+
+### M19（完成时间：2026-03-03）
+
+- 完成检索反馈数据面：支持记录 helpful 反馈、检索模式与策略参数样本。
+- 完成策略推荐能力：按 workspace 聚合近 7 天反馈并输出建议 `keyword/vector` 权重、阈值与候选规模。
+- 完成 autoTune 闭环：检索 API 与 Agent 工具可自动应用推荐策略（无显式 override 时生效）。
+- 完成 M19 冒烟脚本：`scripts/m19_smoke.sh`（已验证通过）。
+- 完成 M19 单测：`KnowledgeRetrievalPolicyServiceTest`。
+- 完成 M19 交付文档：`docs/M19-Agent检索反馈闭环与自动调优说明.md`。

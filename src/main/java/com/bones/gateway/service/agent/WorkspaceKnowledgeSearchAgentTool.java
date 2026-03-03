@@ -3,6 +3,7 @@ package com.bones.gateway.service.agent;
 import com.bones.gateway.dto.KnowledgeSearchResponse;
 import com.bones.gateway.dto.KnowledgeSnippetItemResponse;
 import com.bones.gateway.service.KnowledgeBaseService;
+import com.bones.gateway.service.KnowledgeRetrievalPolicyService;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
@@ -15,9 +16,12 @@ public class WorkspaceKnowledgeSearchAgentTool implements AgentTool {
     private static final int DEFAULT_LIMIT = 3;
 
     private final KnowledgeBaseService knowledgeBaseService;
+    private final KnowledgeRetrievalPolicyService knowledgeRetrievalPolicyService;
 
-    public WorkspaceKnowledgeSearchAgentTool(KnowledgeBaseService knowledgeBaseService) {
+    public WorkspaceKnowledgeSearchAgentTool(KnowledgeBaseService knowledgeBaseService,
+                                             KnowledgeRetrievalPolicyService knowledgeRetrievalPolicyService) {
         this.knowledgeBaseService = knowledgeBaseService;
+        this.knowledgeRetrievalPolicyService = knowledgeRetrievalPolicyService;
     }
 
     @Override
@@ -77,6 +81,10 @@ public class WorkspaceKnowledgeSearchAgentTool implements AgentTool {
                                 "minimum", 1,
                                 "maximum", 200,
                                 "description", "Search candidate size override before ranking"
+                        ),
+                        "autoTune", Map.of(
+                                "type", "boolean",
+                                "description", "Use retrieval feedback recommendation when overrides are not provided"
                         )
                 ),
                 "required", List.of("query"),
@@ -89,12 +97,14 @@ public class WorkspaceKnowledgeSearchAgentTool implements AgentTool {
         String query = resolveQuery(context);
         int limit = resolveLimit(context);
         String searchMode = resolveSearchMode(context);
-        KnowledgeBaseService.SearchOverrides overrides = resolveSearchOverrides(context);
+        boolean autoTune = resolveAutoTune(context);
+        KnowledgeBaseService.SearchOverrides overrides = resolveSearchOverrides(context, autoTune);
         StringBuilder input = new StringBuilder();
         input.append("{\"workspaceId\":").append(context.workspaceId())
                 .append(",\"query\":\"").append(escapeJson(query))
                 .append("\",\"searchMode\":\"").append(escapeJson(searchMode))
                 .append("\",\"limit\":").append(limit);
+        input.append(",\"autoTune\":").append(autoTune);
         if (overrides != null && overrides.vectorMinSimilarity() != null) {
             input.append(",\"vectorMinSimilarity\":").append(overrides.vectorMinSimilarity());
         }
@@ -125,7 +135,8 @@ public class WorkspaceKnowledgeSearchAgentTool implements AgentTool {
         }
         int limit = resolveLimit(context);
         String searchMode = resolveSearchMode(context);
-        KnowledgeBaseService.SearchOverrides overrides = resolveSearchOverrides(context);
+        boolean autoTune = resolveAutoTune(context);
+        KnowledgeBaseService.SearchOverrides overrides = resolveSearchOverrides(context, autoTune);
         KnowledgeSearchResponse searchResponse = knowledgeBaseService
                 .searchSnippets(context.userId(), context.workspaceId(), query, limit, searchMode, overrides);
         List<KnowledgeSnippetItemResponse> items = searchResponse.items();
@@ -139,6 +150,7 @@ public class WorkspaceKnowledgeSearchAgentTool implements AgentTool {
                 .append(", matches=").append(items.size())
                 .append(", maxCandidates=").append(searchResponse.maxCandidates())
                 .append(", overrideApplied=").append(searchResponse.overrideApplied())
+                .append(", autoTune=").append(autoTune)
                 .append(", keywordWeight=").append(searchResponse.keywordWeight())
                 .append(", vectorWeight=").append(searchResponse.vectorWeight())
                 .append(", scoreThreshold=").append(searchResponse.scoreThreshold())
@@ -197,7 +209,7 @@ public class WorkspaceKnowledgeSearchAgentTool implements AgentTool {
         return "hybrid";
     }
 
-    private KnowledgeBaseService.SearchOverrides resolveSearchOverrides(AgentToolContext context) {
+    private KnowledgeBaseService.SearchOverrides resolveSearchOverrides(AgentToolContext context, boolean autoTune) {
         Double vectorMinSimilarity = resolveDoubleOption(
                 context,
                 "vectorMinSimilarity",
@@ -230,7 +242,24 @@ public class WorkspaceKnowledgeSearchAgentTool implements AgentTool {
                 hybridVectorWeight,
                 maxCandidates
         );
-        return overrides.hasAny() ? overrides : null;
+        if (overrides.hasAny()) {
+            return overrides;
+        }
+        if (!autoTune) {
+            return null;
+        }
+        return knowledgeRetrievalPolicyService.resolveAutoTuneOverrides(context.userId(), context.workspaceId());
+    }
+
+    private boolean resolveAutoTune(AgentToolContext context) {
+        Object raw = context.toolArguments().get("autoTune");
+        Boolean fromArg = parseBoolean(raw);
+        if (fromArg != null) {
+            return fromArg;
+        }
+        Object fromMetadata = context.metadata().get("knowledgeAutoTune");
+        Boolean parsedFromMetadata = parseBoolean(fromMetadata);
+        return parsedFromMetadata != null && parsedFromMetadata;
     }
 
     private Double resolveDoubleOption(AgentToolContext context, String argName, String metadataKey) {
@@ -292,6 +321,22 @@ public class WorkspaceKnowledgeSearchAgentTool implements AgentTool {
                 return Integer.parseInt(text.trim());
             } catch (NumberFormatException ignored) {
                 return null;
+            }
+        }
+        return null;
+    }
+
+    private Boolean parseBoolean(Object raw) {
+        if (raw instanceof Boolean bool) {
+            return bool;
+        }
+        if (raw instanceof String text && !text.isBlank()) {
+            String normalized = text.trim().toLowerCase();
+            if ("true".equals(normalized)) {
+                return true;
+            }
+            if ("false".equals(normalized)) {
+                return false;
             }
         }
         return null;

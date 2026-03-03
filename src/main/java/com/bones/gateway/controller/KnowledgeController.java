@@ -7,6 +7,7 @@ import com.bones.gateway.dto.KnowledgeSnippetItemResponse;
 import com.bones.gateway.dto.UpdateKnowledgeSnippetRequest;
 import com.bones.gateway.security.AccessControlService;
 import com.bones.gateway.service.KnowledgeBaseService;
+import com.bones.gateway.service.KnowledgeRetrievalPolicyService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
@@ -30,11 +31,14 @@ public class KnowledgeController {
 
     private final KnowledgeBaseService knowledgeBaseService;
     private final AccessControlService accessControlService;
+    private final KnowledgeRetrievalPolicyService knowledgeRetrievalPolicyService;
 
     public KnowledgeController(KnowledgeBaseService knowledgeBaseService,
-                               AccessControlService accessControlService) {
+                               AccessControlService accessControlService,
+                               KnowledgeRetrievalPolicyService knowledgeRetrievalPolicyService) {
         this.knowledgeBaseService = knowledgeBaseService;
         this.accessControlService = accessControlService;
+        this.knowledgeRetrievalPolicyService = knowledgeRetrievalPolicyService;
     }
 
     @PostMapping
@@ -88,21 +92,27 @@ public class KnowledgeController {
             @RequestParam(value = "hybridVectorWeight", required = false)
             @DecimalMin("0.0") Double hybridVectorWeight,
             @RequestParam(value = "maxCandidates", required = false)
-            @Min(1) @Max(200) Integer maxCandidates) {
+            @Min(1) @Max(200) Integer maxCandidates,
+            @RequestParam(value = "autoTune", defaultValue = "false") boolean autoTune) {
         Long targetUserId = accessControlService.resolveUserId(userId);
+        KnowledgeBaseService.SearchOverrides requestOverrides = buildSearchOverrides(
+                vectorMinSimilarity,
+                hybridMinScore,
+                hybridKeywordWeight,
+                hybridVectorWeight,
+                maxCandidates
+        );
+        KnowledgeBaseService.SearchOverrides effectiveOverrides = requestOverrides;
+        if (effectiveOverrides == null && autoTune) {
+            effectiveOverrides = knowledgeRetrievalPolicyService.resolveAutoTuneOverrides(targetUserId, workspaceId);
+        }
         return ApiResponse.success(knowledgeBaseService.searchSnippets(
                 targetUserId,
                 workspaceId,
                 query,
                 limit,
                 searchMode,
-                buildSearchOverrides(
-                        vectorMinSimilarity,
-                        hybridMinScore,
-                        hybridKeywordWeight,
-                        hybridVectorWeight,
-                        maxCandidates
-                )
+                effectiveOverrides
         ));
     }
 
