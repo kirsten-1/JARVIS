@@ -1,0 +1,89 @@
+name: gateway-pro-baseline
+
+on:
+  workflow_dispatch:
+    inputs:
+      samples:
+        description: "A11 sample count"
+        required: false
+        default: "20"
+      warmup:
+        description: "A11 warmup count"
+        required: false
+        default: "3"
+      strict:
+        description: "Enable strict threshold check (true/false)"
+        required: false
+        default: "false"
+      run_agent_baseline:
+        description: "Run optional agent baseline (true/false)"
+        required: false
+        default: "false"
+  schedule:
+    - cron: "20 2 * * *"
+
+concurrency:
+  group: gateway-pro-baseline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare env file
+        run: |
+          cp .env.prod.example .env.prod
+
+      - name: Build gateway image
+        run: |
+          docker build -t jarvis-gateway-pro:a12-ci -f Dockerfile .
+
+      - name: Start mysql/redis/gateway
+        run: |
+          GATEWAY_IMAGE=jarvis-gateway-pro:a12-ci \
+          docker compose -f docker-compose.prod.yml --env-file .env.prod up -d mysql redis gateway
+
+      - name: Wait gateway health
+        run: |
+          for i in {1..90}; do
+            if curl -fsS "http://localhost:8080/actuator/health" >/dev/null 2>&1; then
+              echo "[A12] gateway ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "[A12] gateway health timeout"
+          exit 1
+
+      - name: Run A11 baseline
+        env:
+          SAMPLES: ${{ inputs.samples || '20' }}
+          WARMUP: ${{ inputs.warmup || '3' }}
+          STRICT: ${{ inputs.strict || 'false' }}
+          RUN_AGENT_BASELINE: ${{ inputs.run_agent_baseline || 'false' }}
+        run: |
+          ./scripts/a11_baseline.sh
+
+      - name: Upload baseline report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a12-baseline-report
+          path: docs/reports/a11_baseline_*.md
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Dump diagnostics on failure
+        if: failure()
+        run: |
+          docker ps -a
+          docker compose -f docker-compose.prod.yml --env-file .env.prod logs --no-color --tail=200 gateway mysql redis || true
+
+      - name: Stop stack
+        if: always()
+        run: |
+          docker compose -f docker-compose.prod.yml --env-file .env.prod down --remove-orphans
