@@ -1,0 +1,157 @@
+name: gateway-pro-bundle-audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      rounds:
+        description: "How many A11 rounds to generate"
+        required: false
+        default: "3"
+      samples:
+        description: "A11 sample count"
+        required: false
+        default: "8"
+      warmup:
+        description: "A11 warmup count"
+        required: false
+        default: "2"
+      strict:
+        description: "Enable strict A19 audit (true/false)"
+        required: false
+        default: "true"
+      fail_on_warn:
+        description: "Treat warn as fail in A19 (true/false)"
+        required: false
+        default: "false"
+  schedule:
+    - cron: "15 4 * * 0"
+
+concurrency:
+  group: gateway-pro-bundle-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bundle-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare env file
+        run: |
+          cp .env.prod.example .env.prod
+
+      - name: Build gateway image
+        run: |
+          docker build -t jarvis-gateway-pro:a19-ci -f Dockerfile .
+
+      - name: Start mysql/redis/gateway
+        run: |
+          GATEWAY_IMAGE=jarvis-gateway-pro:a19-ci \
+          docker compose -f docker-compose.prod.yml --env-file .env.prod up -d mysql redis gateway
+
+      - name: Wait gateway health
+        run: |
+          for i in {1..90}; do
+            if curl -fsS "http://localhost:8080/actuator/health" >/dev/null 2>&1; then
+              echo "[A19] gateway ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "[A19] gateway health timeout"
+          exit 1
+
+      - name: Run A08 guard (lightweight)
+        run: |
+          RUN_M11_SMOKE=false \
+          RUN_A04_SMOKE=false \
+          RUN_M13_SMOKE=false \
+          ./scripts/a08_prepush_guard.sh
+
+      - name: Generate A11 baseline rounds
+        env:
+          ROUNDS: ${{ inputs.rounds || '3' }}
+          SAMPLES: ${{ inputs.samples || '8' }}
+          WARMUP: ${{ inputs.warmup || '2' }}
+          RUN_AGENT_BASELINE: "false"
+        run: |
+          rounds="${ROUNDS}"
+          for ((i=1; i<=rounds; i++)); do
+            echo "[A19] baseline round ${i}/${rounds}"
+            ./scripts/a11_baseline.sh
+          done
+
+      - name: Run A13 diff
+        run: |
+          ./scripts/a13_baseline_diff.sh
+
+      - name: Run A15 trend
+        env:
+          MIN_REPORTS: "3"
+          STRICT: "true"
+          FAIL_ON_WARN: "false"
+        run: |
+          ./scripts/a15_baseline_trend.sh
+
+      - name: Run A16 trend gate
+        env:
+          MIN_REPORTS: "3"
+          STRICT: "true"
+          FAIL_ON_WARN: "false"
+        run: |
+          ./scripts/a16_trend_gate.sh
+
+      - name: Run A17 readiness bundle
+        env:
+          STRICT: "true"
+          FAIL_ON_WARN: "false"
+          FAIL_ON_MISSING: "true"
+        run: |
+          ./scripts/a17_readiness_bundle.sh
+
+      - name: Run A18 release candidate bundle
+        env:
+          STRICT: "true"
+          REQUIRE_A17_PASS: "true"
+        run: |
+          ./scripts/a18_release_candidate_bundle.sh
+
+      - name: Run A19 bundle audit
+        env:
+          STRICT: ${{ inputs.strict || 'true' }}
+          FAIL_ON_WARN: ${{ inputs.fail_on_warn || 'false' }}
+          LIMIT: "10"
+        run: |
+          ./scripts/a19_bundle_audit.sh
+
+      - name: Upload bundle-audit artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a19-bundle-audit-report
+          path: |
+            docs/reports/a08_prepush_*.md
+            docs/reports/a11_baseline_*.md
+            docs/reports/a13_baseline_diff_*.md
+            docs/reports/a15_baseline_trend_*.md
+            docs/reports/a16_trend_gate_*.md
+            docs/reports/a17_readiness_bundle_*.md
+            docs/reports/a18_release_candidate_bundle_*.md
+            docs/reports/a19_bundle_audit_*.md
+            docs/reports/bundles/*.tar.gz
+            docs/reports/bundles/a19_bundle_index.md
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Dump diagnostics on failure
+        if: failure()
+        run: |
+          docker ps -a
+          docker compose -f docker-compose.prod.yml --env-file .env.prod logs --no-color --tail=200 gateway mysql redis || true
+
+      - name: Stop stack
+        if: always()
+        run: |
+          docker compose -f docker-compose.prod.yml --env-file .env.prod down --remove-orphans

@@ -42,6 +42,7 @@
 - `docs/A16-趋势门禁与CI接入说明.md`：A16（趋势门禁脚本与 CI 接入）
 - `docs/A17-发布就绪总览与CI编排说明.md`：A17（多报告发布就绪总览与 CI 编排）
 - `docs/A18-候选发布证据包归档说明.md`：A18（候选发布证据包打包归档）
+- `docs/A19-证据包审计与索引说明.md`：A19（证据包完整性审计与索引台账）
 - `docs/多厂商AI使用指南.md`：多厂商接入与路由使用指南
 - `docs/产品不足与增强路线.md`：当前产品不足与可增强路线
 - `docs/启动问题排查记录.md`：启动问题排查沉淀
@@ -120,6 +121,7 @@
 - [x] A16：趋势门禁与 CI 接入（A16 gate + 定时巡检 workflow）
 - [x] A17：发布就绪总览（A08/A11/A13/A15/A16 聚合 + readiness workflow）
 - [x] A18：候选发布证据包（A08~A17 报告打包归档，不执行 release）
+- [x] A19：证据包审计与索引（完整性校验 + bundle index）
 
 ## M1 验收清单
 
@@ -480,6 +482,15 @@
 - [x] 支持 `REQUIRE_A17_PASS` 与 `STRICT` 门禁策略
 - [x] 新增 A18 CI workflow：`.github/workflows/a18-release-candidate-bundle.yml`
 - [x] 新增 A18 交付文档：`docs/A18-候选发布证据包归档说明.md`
+
+## A19 验收清单（已完成）
+
+- [x] 新增审计脚本：`scripts/a19_bundle_audit.sh`
+- [x] 校验 A18 证据包解包、manifest、checksums 完整性
+- [x] 生成审计报告：`docs/reports/a19_bundle_audit_*.md`
+- [x] 生成索引台账：`docs/reports/bundles/a19_bundle_index.md`
+- [x] 新增 A19 CI workflow：`.github/workflows/a19-bundle-audit.yml`
+- [x] 新增 A19 交付文档：`docs/A19-证据包审计与索引说明.md`
 
 ## 当前目录结构（M1）
 
