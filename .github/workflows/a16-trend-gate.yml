@@ -1,0 +1,116 @@
+name: gateway-pro-trend-gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      rounds:
+        description: "How many A11 rounds to generate"
+        required: false
+        default: "3"
+      samples:
+        description: "A11 sample count"
+        required: false
+        default: "12"
+      warmup:
+        description: "A11 warmup count"
+        required: false
+        default: "2"
+      run_agent_baseline:
+        description: "Run optional agent baseline in each A11 round (true/false)"
+        required: false
+        default: "false"
+      strict:
+        description: "Enable strict trend check (true/false)"
+        required: false
+        default: "true"
+      fail_on_warn:
+        description: "Treat warn as fail (true/false)"
+        required: false
+        default: "false"
+      min_reports:
+        description: "Minimum reports required by A16"
+        required: false
+        default: "3"
+  schedule:
+    - cron: "10 3 * * 3"
+
+concurrency:
+  group: gateway-pro-trend-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trend-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare env file
+        run: |
+          cp .env.prod.example .env.prod
+
+      - name: Build gateway image
+        run: |
+          docker build -t jarvis-gateway-pro:a16-ci -f Dockerfile .
+
+      - name: Start mysql/redis/gateway
+        run: |
+          GATEWAY_IMAGE=jarvis-gateway-pro:a16-ci \
+          docker compose -f docker-compose.prod.yml --env-file .env.prod up -d mysql redis gateway
+
+      - name: Wait gateway health
+        run: |
+          for i in {1..90}; do
+            if curl -fsS "http://localhost:8080/actuator/health" >/dev/null 2>&1; then
+              echo "[A16] gateway ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "[A16] gateway health timeout"
+          exit 1
+
+      - name: Generate A11 baseline rounds
+        env:
+          ROUNDS: ${{ inputs.rounds || '3' }}
+          SAMPLES: ${{ inputs.samples || '12' }}
+          WARMUP: ${{ inputs.warmup || '2' }}
+          RUN_AGENT_BASELINE: ${{ inputs.run_agent_baseline || 'false' }}
+        run: |
+          rounds="${ROUNDS}"
+          for ((i=1; i<=rounds; i++)); do
+            echo "[A16] baseline round ${i}/${rounds}"
+            ./scripts/a11_baseline.sh
+          done
+
+      - name: Run A16 trend gate
+        env:
+          STRICT: ${{ inputs.strict || 'true' }}
+          FAIL_ON_WARN: ${{ inputs.fail_on_warn || 'false' }}
+          MIN_REPORTS: ${{ inputs.min_reports || '3' }}
+        run: |
+          ./scripts/a16_trend_gate.sh
+
+      - name: Upload trend gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a16-trend-gate-report
+          path: |
+            docs/reports/a11_baseline_*.md
+            docs/reports/a15_baseline_trend_*.md
+            docs/reports/a16_trend_gate_*.md
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Dump diagnostics on failure
+        if: failure()
+        run: |
+          docker ps -a
+          docker compose -f docker-compose.prod.yml --env-file .env.prod logs --no-color --tail=200 gateway mysql redis || true
+
+      - name: Stop stack
+        if: always()
+        run: |
+          docker compose -f docker-compose.prod.yml --env-file .env.prod down --remove-orphans

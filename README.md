@@ -39,6 +39,7 @@
 - `docs/A13-基线差异对比与回归判定说明.md`：A13（A11 报告差异比较与回归判定）
 - `docs/A14-参考基线门禁与CI接入说明.md`：A14（reference baseline 门禁与 CI 接入）
 - `docs/A15-基线趋势与漂移监控说明.md`：A15（多报告趋势分析与漂移监控）
+- `docs/A16-趋势门禁与CI接入说明.md`：A16（趋势门禁脚本与 CI 接入）
 - `docs/多厂商AI使用指南.md`：多厂商接入与路由使用指南
 - `docs/产品不足与增强路线.md`：当前产品不足与可增强路线
 - `docs/启动问题排查记录.md`：启动问题排查沉淀
@@ -114,6 +115,7 @@
 - [x] A13：基线差异对比（A11 报告对比 + 回归判定）
 - [x] A14：参考基线门禁（capture/check + CI gate workflow）
 - [x] A15：基线趋势分析（多报告聚合 + 漂移判定 + 可选严格门禁）
+- [x] A16：趋势门禁与 CI 接入（A16 gate + 定时巡检 workflow）
 
 ## M1 验收清单
 
@@ -447,6 +449,15 @@
 - [x] 支持 `STRICT` / `FAIL_ON_WARN` 门禁行为
 - [x] 自动生成趋势报告：`docs/reports/a15_baseline_trend_*.md`
 - [x] 新增 A15 交付文档：`docs/A15-基线趋势与漂移监控说明.md`
+
+## A16 验收清单（已完成）
+
+- [x] 新增趋势门禁脚本：`scripts/a16_trend_gate.sh`
+- [x] 在 A15 基础上输出 gate 结论（`pass/warn/fail`）与原因
+- [x] 新增 A16 CI workflow：`.github/workflows/a16-trend-gate.yml`
+- [x] CI 自动生成多轮 A11 样本并执行 A16 门禁
+- [x] 自动上传 A11/A15/A16 报告 artifact
+- [x] 新增 A16 交付文档：`docs/A16-趋势门禁与CI接入说明.md`
 
 ## 当前目录结构（M1）
 
