@@ -2,7 +2,7 @@ services:
   aiservice:
     profiles: ["aiservice"]
     container_name: jarvis-aiservice-prod
-    image: ${AISERVICE_IMAGE:-ghcr.io/your-org/jarvis-ai-service:latest}
+    image: ${AISERVICE_IMAGE:-jarvis-ai-service:local}
     restart: unless-stopped
     environment:
       APP_ENV: prod

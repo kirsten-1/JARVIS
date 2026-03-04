@@ -32,6 +32,7 @@
 - `docs/A06-阶段验收与检查点报告说明.md`：A06（阶段验收报告与关键节点留痕）
 - `docs/A07-阶段版本节点与回滚清单说明.md`：A07（阶段节点提交模板 + 回滚清单）
 - `docs/A08-预推送守卫与敏感信息扫描说明.md`：A08（预推送守卫 + 密钥样式扫描）
+- `docs/A09-AI服务本地构建编排说明.md`：A09（ai-service 同栈本地构建与无远端镜像依赖）
 - `docs/多厂商AI使用指南.md`：多厂商接入与路由使用指南
 - `docs/产品不足与增强路线.md`：当前产品不足与可增强路线
 - `docs/启动问题排查记录.md`：启动问题排查沉淀
@@ -100,6 +101,7 @@
 - [x] A06：阶段验收与检查点报告脚本（不自动发布）
 - [x] A07：阶段版本节点报告与提交模板（含回滚清单）
 - [x] A08：预推送守卫脚本（冒烟+敏感信息扫描+报告）
+- [x] A09：ai-service 同栈本地构建（缺失远端镜像时自动 build）
 
 ## M1 验收清单
 
@@ -376,6 +378,14 @@
 - [x] 增加密钥样式字符串扫描（预防误提交）
 - [x] 支持自动汇总 smoke + 安全检查报告（`docs/reports/a08_prepush_*.md`）
 - [x] 新增 A08 交付文档：`docs/A08-预推送守卫与敏感信息扫描说明.md`
+
+## A09 验收清单（已完成）
+
+- [x] `m11_prod_up.sh` 增加 ai-service 镜像本地检测与自动构建（可配置）
+- [x] `docker-compose.prod.yml` 的 `aiservice` 默认镜像改为 `jarvis-ai-service:local`
+- [x] `.env.prod.example` 增加本地构建变量（`AISERVICE_AUTO_BUILD`/`AISERVICE_BUILD_CONTEXT`/`AISERVICE_DOCKERFILE`）
+- [x] 补充 A04 与多厂商文档中的本地构建示例
+- [x] 新增 A09 交付文档：`docs/A09-AI服务本地构建编排说明.md`
 
 ## 当前目录结构（M1）
 

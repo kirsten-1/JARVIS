@@ -21,6 +21,7 @@
 - `aiservice`（`profiles: ["aiservice"]`）
 - 端口：`${AISERVICE_PORT:-18000}:8000`
 - 镜像：`${AISERVICE_IMAGE}`
+- 默认本地构建镜像名：`jarvis-ai-service:local`
 - 支持 MiniMax 相关环境变量透传（`AIS_MINIMAX_*`）
 
 说明：
@@ -41,6 +42,7 @@
   - 支持 `AI_AISERVICE_COMPOSE_ENABLED=true` 时自动启用 `aiservice` profile。
   - 自动将 `AI_AISERVICE_BASE_URL` 默认纠正为 `http://aiservice:8000`（compose 内部地址）。
   - 复用 `AI_MINIMAX_*` 到 `AIS_MINIMAX_*`（当 A04 专用变量未显式设置时）。
+  - 当 `AISERVICE_IMAGE` 本地不存在时，按 `AISERVICE_BUILD_CONTEXT + AISERVICE_DOCKERFILE` 自动构建。
   - 增加 ai-service 健康等待。
 - `m11_prod_down.sh`
   - 支持在 A04 模式下按同样 profile 收敛下线。
@@ -69,6 +71,9 @@
 
 - `AI_AISERVICE_COMPOSE_ENABLED`
 - `AISERVICE_IMAGE`
+- `AISERVICE_AUTO_BUILD`
+- `AISERVICE_BUILD_CONTEXT`
+- `AISERVICE_DOCKERFILE`
 - `AISERVICE_PORT`
 - `AIS_AI_DEFAULT_PROVIDER`
 - `AIS_AI_FALLBACK_PROVIDER`
@@ -88,7 +93,10 @@ AI_AISERVICE_BASE_URL=http://aiservice:8000
 AI_AISERVICE_CHAT_PATH=/api/v1/chat
 AI_AISERVICE_STREAM_PATH=/api/v1/chat/stream
 
-AISERVICE_IMAGE=ghcr.io/your-org/jarvis-ai-service:latest
+AISERVICE_IMAGE=jarvis-ai-service:local
+AISERVICE_AUTO_BUILD=true
+AISERVICE_BUILD_CONTEXT=../../ai-service
+AISERVICE_DOCKERFILE=Dockerfile
 AISERVICE_PORT=18000
 AIS_MINIMAX_ENABLED=true
 AIS_MINIMAX_API_KEY=your_key_here
