@@ -43,6 +43,7 @@
 - `docs/A17-发布就绪总览与CI编排说明.md`：A17（多报告发布就绪总览与 CI 编排）
 - `docs/A18-候选发布证据包归档说明.md`：A18（候选发布证据包打包归档）
 - `docs/A19-证据包审计与索引说明.md`：A19（证据包完整性审计与索引台账）
+- `docs/A20-收官决策与交付快照说明.md`：A20（收官 go/hold 决策与交付快照）
 - `docs/多厂商AI使用指南.md`：多厂商接入与路由使用指南
 - `docs/产品不足与增强路线.md`：当前产品不足与可增强路线
 - `docs/启动问题排查记录.md`：启动问题排查沉淀
@@ -122,6 +123,7 @@
 - [x] A17：发布就绪总览（A08/A11/A13/A15/A16 聚合 + readiness workflow）
 - [x] A18：候选发布证据包（A08~A17 报告打包归档，不执行 release）
 - [x] A19：证据包审计与索引（完整性校验 + bundle index）
+- [x] A20：收官决策与交付快照（go/hold 决策 + closeout package）
 
 ## M1 验收清单
 
@@ -491,6 +493,15 @@
 - [x] 生成索引台账：`docs/reports/bundles/a19_bundle_index.md`
 - [x] 新增 A19 CI workflow：`.github/workflows/a19-bundle-audit.yml`
 - [x] 新增 A19 交付文档：`docs/A19-证据包审计与索引说明.md`
+
+## A20 验收清单（已完成）
+
+- [x] 新增收官脚本：`scripts/a20_final_closeout.sh`
+- [x] 汇总 A17/A18/A19 并输出收官决策（`go/hold`）
+- [x] 生成收官快照：`docs/reports/bundles/a20_closeout_snapshot_*.json`
+- [x] 生成收官归档包：`docs/reports/bundles/a20_closeout_package_*.tar.gz`
+- [x] 新增 A20 CI workflow：`.github/workflows/a20-final-closeout.yml`
+- [x] 新增 A20 交付文档：`docs/A20-收官决策与交付快照说明.md`
 
 ## 当前目录结构（M1）
 
