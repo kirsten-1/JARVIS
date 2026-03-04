@@ -37,6 +37,7 @@
 - `docs/A11-性能基线与回归报告说明.md`：A11（性能基线采集与回归报告）
 - `docs/A12-CI夜间基线回归说明.md`：A12（A11 基线接入夜间/手动 CI 回归）
 - `docs/A13-基线差异对比与回归判定说明.md`：A13（A11 报告差异比较与回归判定）
+- `docs/A14-参考基线门禁与CI接入说明.md`：A14（reference baseline 门禁与 CI 接入）
 - `docs/多厂商AI使用指南.md`：多厂商接入与路由使用指南
 - `docs/产品不足与增强路线.md`：当前产品不足与可增强路线
 - `docs/启动问题排查记录.md`：启动问题排查沉淀
@@ -110,6 +111,7 @@
 - [x] A11：性能基线脚本（冷/热缓存 + 阈值检查 + 报告输出）
 - [x] A12：CI 夜间基线回归（自动执行 A11 + artifact 归档）
 - [x] A13：基线差异对比（A11 报告对比 + 回归判定）
+- [x] A14：参考基线门禁（capture/check + CI gate workflow）
 
 ## M1 验收清单
 
@@ -426,6 +428,14 @@
 - [x] 支持 `STRICT=true` 作为门禁退出码
 - [x] 自动生成差异报告：`docs/reports/a13_baseline_diff_*.md`
 - [x] 新增 A13 交付文档：`docs/A13-基线差异对比与回归判定说明.md`
+
+## A14 验收清单（已完成）
+
+- [x] 新增门禁脚本：`scripts/a14_baseline_gate.sh`（`capture/check`）
+- [x] 引入 reference baseline（`docs/baseline/a11_reference.md`）机制
+- [x] 门禁结果输出：`a14_gate_*.md` + `a14_gate_diff_*.md`
+- [x] 新增 CI 门禁 workflow：`.github/workflows/a14-baseline-gate.yml`
+- [x] 新增 A14 交付文档：`docs/A14-参考基线门禁与CI接入说明.md`
 
 ## 当前目录结构（M1）
 

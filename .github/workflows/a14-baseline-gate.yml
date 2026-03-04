@@ -1,0 +1,119 @@
+name: gateway-pro-baseline-gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      samples:
+        description: "A11 sample count"
+        required: false
+        default: "20"
+      warmup:
+        description: "A11 warmup count"
+        required: false
+        default: "3"
+      strict:
+        description: "Enable strict gate mode (true/false)"
+        required: false
+        default: "true"
+      fail_on_warn:
+        description: "Treat warn as fail (true/false)"
+        required: false
+        default: "false"
+  schedule:
+    - cron: "40 2 * * 1"
+
+concurrency:
+  group: gateway-pro-baseline-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  baseline-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check reference baseline
+        id: ref
+        run: |
+          if [[ -f "docs/baseline/a11_reference.md" ]]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "exists=false" >> "$GITHUB_OUTPUT"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "[A14] missing docs/baseline/a11_reference.md (required for manual gate run)"
+            exit 1
+          fi
+          echo "[A14] baseline reference missing, skip scheduled run."
+
+      - name: Prepare env file
+        if: steps.ref.outputs.exists == 'true'
+        run: |
+          cp .env.prod.example .env.prod
+
+      - name: Build gateway image
+        if: steps.ref.outputs.exists == 'true'
+        run: |
+          docker build -t jarvis-gateway-pro:a14-ci -f Dockerfile .
+
+      - name: Start mysql/redis/gateway
+        if: steps.ref.outputs.exists == 'true'
+        run: |
+          GATEWAY_IMAGE=jarvis-gateway-pro:a14-ci \
+          docker compose -f docker-compose.prod.yml --env-file .env.prod up -d mysql redis gateway
+
+      - name: Wait gateway health
+        if: steps.ref.outputs.exists == 'true'
+        run: |
+          for i in {1..90}; do
+            if curl -fsS "http://localhost:8080/actuator/health" >/dev/null 2>&1; then
+              echo "[A14] gateway ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "[A14] gateway health timeout"
+          exit 1
+
+      - name: Run A11 baseline
+        if: steps.ref.outputs.exists == 'true'
+        env:
+          SAMPLES: ${{ inputs.samples || '20' }}
+          WARMUP: ${{ inputs.warmup || '3' }}
+        run: |
+          ./scripts/a11_baseline.sh
+
+      - name: Run A14 gate check
+        if: steps.ref.outputs.exists == 'true'
+        env:
+          MODE: check
+          STRICT: ${{ inputs.strict || 'true' }}
+          FAIL_ON_WARN: ${{ inputs.fail_on_warn || 'false' }}
+        run: |
+          ./scripts/a14_baseline_gate.sh
+
+      - name: Upload gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a14-baseline-gate-report
+          path: |
+            docs/reports/a11_baseline_*.md
+            docs/reports/a13_baseline_diff_*.md
+            docs/reports/a14_gate_*.md
+            docs/reports/a14_gate_diff_*.md
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Dump diagnostics on failure
+        if: failure() && steps.ref.outputs.exists == 'true'
+        run: |
+          docker ps -a
+          docker compose -f docker-compose.prod.yml --env-file .env.prod logs --no-color --tail=200 gateway mysql redis || true
+
+      - name: Stop stack
+        if: always() && steps.ref.outputs.exists == 'true'
+        run: |
+          docker compose -f docker-compose.prod.yml --env-file .env.prod down --remove-orphans
