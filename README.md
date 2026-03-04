@@ -41,6 +41,7 @@
 - `docs/A15-基线趋势与漂移监控说明.md`：A15（多报告趋势分析与漂移监控）
 - `docs/A16-趋势门禁与CI接入说明.md`：A16（趋势门禁脚本与 CI 接入）
 - `docs/A17-发布就绪总览与CI编排说明.md`：A17（多报告发布就绪总览与 CI 编排）
+- `docs/A18-候选发布证据包归档说明.md`：A18（候选发布证据包打包归档）
 - `docs/多厂商AI使用指南.md`：多厂商接入与路由使用指南
 - `docs/产品不足与增强路线.md`：当前产品不足与可增强路线
 - `docs/启动问题排查记录.md`：启动问题排查沉淀
@@ -118,6 +119,7 @@
 - [x] A15：基线趋势分析（多报告聚合 + 漂移判定 + 可选严格门禁）
 - [x] A16：趋势门禁与 CI 接入（A16 gate + 定时巡检 workflow）
 - [x] A17：发布就绪总览（A08/A11/A13/A15/A16 聚合 + readiness workflow）
+- [x] A18：候选发布证据包（A08~A17 报告打包归档，不执行 release）
 
 ## M1 验收清单
 
@@ -469,6 +471,15 @@
 - [x] 支持 `FAIL_ON_WARN` / `FAIL_ON_MISSING` 门禁策略
 - [x] 新增 A17 CI workflow：`.github/workflows/a17-readiness-bundle.yml`
 - [x] 新增 A17 交付文档：`docs/A17-发布就绪总览与CI编排说明.md`
+
+## A18 验收清单（已完成）
+
+- [x] 新增证据包脚本：`scripts/a18_release_candidate_bundle.sh`
+- [x] 自动收集 A08/A11/A13/A15/A16/A17（可选 A14）最新报告
+- [x] 生成归档包：`docs/reports/bundles/*.tar.gz`（含 `manifest` + `checksums`）
+- [x] 支持 `REQUIRE_A17_PASS` 与 `STRICT` 门禁策略
+- [x] 新增 A18 CI workflow：`.github/workflows/a18-release-candidate-bundle.yml`
+- [x] 新增 A18 交付文档：`docs/A18-候选发布证据包归档说明.md`
 
 ## 当前目录结构（M1）
 
