@@ -38,6 +38,7 @@
 - `docs/A12-CI夜间基线回归说明.md`：A12（A11 基线接入夜间/手动 CI 回归）
 - `docs/A13-基线差异对比与回归判定说明.md`：A13（A11 报告差异比较与回归判定）
 - `docs/A14-参考基线门禁与CI接入说明.md`：A14（reference baseline 门禁与 CI 接入）
+- `docs/A15-基线趋势与漂移监控说明.md`：A15（多报告趋势分析与漂移监控）
 - `docs/多厂商AI使用指南.md`：多厂商接入与路由使用指南
 - `docs/产品不足与增强路线.md`：当前产品不足与可增强路线
 - `docs/启动问题排查记录.md`：启动问题排查沉淀
@@ -112,6 +113,7 @@
 - [x] A12：CI 夜间基线回归（自动执行 A11 + artifact 归档）
 - [x] A13：基线差异对比（A11 报告对比 + 回归判定）
 - [x] A14：参考基线门禁（capture/check + CI gate workflow）
+- [x] A15：基线趋势分析（多报告聚合 + 漂移判定 + 可选严格门禁）
 
 ## M1 验收清单
 
@@ -436,6 +438,15 @@
 - [x] 门禁结果输出：`a14_gate_*.md` + `a14_gate_diff_*.md`
 - [x] 新增 CI 门禁 workflow：`.github/workflows/a14-baseline-gate.yml`
 - [x] 新增 A14 交付文档：`docs/A14-参考基线门禁与CI接入说明.md`
+
+## A15 验收清单（已完成）
+
+- [x] 新增趋势脚本：`scripts/a15_baseline_trend.sh`
+- [x] 支持聚合多份 A11 报告并输出 P90 趋势摘要
+- [x] 支持 `improved/stable/regressed` 判定与 `pass/warn/fail` 结论
+- [x] 支持 `STRICT` / `FAIL_ON_WARN` 门禁行为
+- [x] 自动生成趋势报告：`docs/reports/a15_baseline_trend_*.md`
+- [x] 新增 A15 交付文档：`docs/A15-基线趋势与漂移监控说明.md`
 
 ## 当前目录结构（M1）
 
