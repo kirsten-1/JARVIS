@@ -88,6 +88,16 @@ jarvis:
     api-key: ${AI_SERVICE_API_KEY:}
     model: ${AI_SERVICE_MODEL:}
     providers:
+      aiservice:
+        enabled: ${AI_AISERVICE_ENABLED:false}
+        protocol: OPENAI_COMPATIBLE
+        base-url: ${AI_AISERVICE_BASE_URL:http://localhost:8000}
+        chat-path: ${AI_AISERVICE_CHAT_PATH:/api/v1/chat}
+        stream-path: ${AI_AISERVICE_STREAM_PATH:/api/v1/chat/stream}
+        api-key: ${AI_AISERVICE_API_KEY:}
+        api-key-header: ${AI_AISERVICE_API_KEY_HEADER:Authorization}
+        api-key-prefix: ${AI_AISERVICE_API_KEY_PREFIX:Bearer}
+        model: ${AI_AISERVICE_MODEL:}
       local:
         enabled: ${AI_LOCAL_ENABLED:true}
         protocol: OPENAI_COMPATIBLE

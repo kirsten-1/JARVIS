@@ -1,0 +1,6 @@
+chore(stage): A07-gateway-aiservice checkpoint 20260304_175027
+
+- add stage report: docs/reports/stages/a07_stage_20260304_175027_A07-gateway-aiservice.md
+- latest a06: docs/reports/a06_checkpoint_20260304_174619.md
+- keep release deferred until full JARVIS closeout
+- include rollback checklist for gateway/ai-service route and image fallback

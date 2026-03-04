@@ -112,6 +112,33 @@ class WebClientAiServiceClientTest {
     }
 
     @Test
+    void chat_shouldParseJarvisAiServiceStyleResponse_whenCamelCaseUsageFields() {
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("""
+                        {
+                          "content":"from-ai-service",
+                          "model":"mock-general-v1",
+                          "finishReason":"stop",
+                          "promptTokens":9,
+                          "completionTokens":11,
+                          "totalTokens":20,
+                          "provider":"mock"
+                        }
+                        """));
+
+        AiChatResponse response = client.chat(new AiChatRequest("hi", 1L, 1L, null, null, null, null)).block();
+
+        assertEquals("from-ai-service", response.content());
+        assertEquals("mock-general-v1", response.model());
+        assertEquals("stop", response.finishReason());
+        assertEquals(9, response.promptTokens());
+        assertEquals(11, response.completionTokens());
+        assertEquals(20, response.totalTokens());
+    }
+
+    @Test
     void chat_shouldSendOpenAiToolsAndFilterControlMetadata() throws Exception {
         mockWebServer.enqueue(new MockResponse()
                 .setResponseCode(200)
@@ -195,6 +222,29 @@ class WebClientAiServiceClientTest {
                 .block();
 
         assertEquals(List.of("first", "second"), chunks);
+    }
+
+    @Test
+    void chatStream_shouldParseJarvisAiServiceSseDeltaChunks() {
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "text/event-stream")
+                .setBody("""
+                        data: {"type":"meta","provider":"mock","model":"mock-general-v1"}
+
+                        data: {"type":"delta","content":"hello "}
+
+                        data: {"type":"delta","content":"jarvis"}
+
+                        data: {"type":"done","finishReason":"stop"}
+
+                        """));
+
+        List<String> chunks = client.chatStream(new AiChatRequest("hi", 1L, 1L, null, null, null, null))
+                .collectList()
+                .block();
+
+        assertEquals(List.of("hello ", "jarvis"), chunks);
     }
 
     @Test

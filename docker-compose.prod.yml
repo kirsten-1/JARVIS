@@ -1,4 +1,30 @@
 services:
+  aiservice:
+    profiles: ["aiservice"]
+    container_name: jarvis-aiservice-prod
+    image: ${AISERVICE_IMAGE:-ghcr.io/your-org/jarvis-ai-service:latest}
+    restart: unless-stopped
+    environment:
+      APP_ENV: prod
+      HOST: 0.0.0.0
+      PORT: 8000
+      AI_DEFAULT_PROVIDER: ${AIS_AI_DEFAULT_PROVIDER:-minimax}
+      AI_FALLBACK_PROVIDER: ${AIS_AI_FALLBACK_PROVIDER:-mock}
+      AI_TIMEOUT_SECONDS: ${AIS_AI_TIMEOUT_SECONDS:-60}
+      AI_CB_FAILURE_THRESHOLD: ${AIS_AI_CB_FAILURE_THRESHOLD:-3}
+      AI_CB_OPEN_SECONDS: ${AIS_AI_CB_OPEN_SECONDS:-20}
+      MOCK_PROVIDER_ENABLED: ${AIS_MOCK_PROVIDER_ENABLED:-true}
+      MOCK_PROVIDER_MODEL: ${AIS_MOCK_PROVIDER_MODEL:-mock-general-v1}
+      MINIMAX_ENABLED: ${AIS_MINIMAX_ENABLED:-true}
+      MINIMAX_BASE_URL: ${AIS_MINIMAX_BASE_URL:-https://api.minimaxi.com/anthropic}
+      MINIMAX_API_KEY: ${AIS_MINIMAX_API_KEY:-}
+      MINIMAX_MODEL: ${AIS_MINIMAX_MODEL:-MiniMax-M2.5}
+      MINIMAX_ANTHROPIC_VERSION: ${AIS_MINIMAX_ANTHROPIC_VERSION:-2023-06-01}
+      MINIMAX_API_KEY_HEADER: ${AIS_MINIMAX_API_KEY_HEADER:-Authorization}
+      MINIMAX_API_KEY_PREFIX: ${AIS_MINIMAX_API_KEY_PREFIX:-Bearer}
+    ports:
+      - "${AISERVICE_PORT:-18000}:8000"
+
   mysql:
     image: mysql:8.0.39
     container_name: jarvis-mysql-prod
@@ -68,6 +94,14 @@ services:
       AI_LOCAL_BASE_URL: ${AI_LOCAL_BASE_URL:-http://host.docker.internal:8000}
       AI_LOCAL_CHAT_PATH: ${AI_LOCAL_CHAT_PATH:-/v1/chat}
       AI_LOCAL_STREAM_PATH: ${AI_LOCAL_STREAM_PATH:-/v1/chat/stream}
+      AI_AISERVICE_ENABLED: ${AI_AISERVICE_ENABLED:-false}
+      AI_AISERVICE_BASE_URL: ${AI_AISERVICE_BASE_URL:-http://host.docker.internal:8000}
+      AI_AISERVICE_CHAT_PATH: ${AI_AISERVICE_CHAT_PATH:-/api/v1/chat}
+      AI_AISERVICE_STREAM_PATH: ${AI_AISERVICE_STREAM_PATH:-/api/v1/chat/stream}
+      AI_AISERVICE_API_KEY: ${AI_AISERVICE_API_KEY:-}
+      AI_AISERVICE_API_KEY_HEADER: ${AI_AISERVICE_API_KEY_HEADER:-Authorization}
+      AI_AISERVICE_API_KEY_PREFIX: ${AI_AISERVICE_API_KEY_PREFIX:-Bearer}
+      AI_AISERVICE_MODEL: ${AI_AISERVICE_MODEL:-}
       AI_MINIMAX_ENABLED: ${AI_MINIMAX_ENABLED:-false}
       AI_MINIMAX_PROTOCOL: ${AI_MINIMAX_PROTOCOL:-OPENAI_COMPATIBLE}
       AI_MINIMAX_BASE_URL: ${AI_MINIMAX_BASE_URL:-https://api.minimaxi.com/anthropic}

@@ -11,6 +11,7 @@
 - 智谱 GLM
 - MiniMax
 - local（本地 mock/自建服务）
+- ai-service（上游模型网关，推荐用于统一路由与降级）
 
 说明：
 - 从 M5.5 开始，业务接口默认受 JWT 保护。调用接口前需先获取 Bearer token（开发环境可用 `/api/v1/auth/dev-token`）。
@@ -49,6 +50,16 @@ AI_LOCAL_STREAM_PATH=/v1/chat/stream
 ```
 
 然后启动应用，调用 `/api/v1/ai/chat` 验证链路。
+
+如果你要让 Gateway 走 `ai-service`（A03）：
+
+```bash
+AI_DEFAULT_PROVIDER=aiservice
+AI_AISERVICE_ENABLED=true
+AI_AISERVICE_BASE_URL=http://localhost:8000
+AI_AISERVICE_CHAT_PATH=/api/v1/chat
+AI_AISERVICE_STREAM_PATH=/api/v1/chat/stream
+```
 
 ## 5. 各厂商配置示例
 
@@ -133,6 +144,50 @@ AI_DEFAULT_PROVIDER=minimax
 ```
 
 说明：上述为 MiniMax Anthropic 兼容网关配置；如你账户网关不同，可调整 `BASE_URL/PATH`。
+
+## 5.7 ai-service（上游模型网关）
+
+```bash
+AI_AISERVICE_ENABLED=true
+AI_AISERVICE_BASE_URL=http://localhost:8000
+AI_AISERVICE_CHAT_PATH=/api/v1/chat
+AI_AISERVICE_STREAM_PATH=/api/v1/chat/stream
+AI_AISERVICE_API_KEY=
+AI_AISERVICE_API_KEY_HEADER=Authorization
+AI_AISERVICE_API_KEY_PREFIX=Bearer
+AI_AISERVICE_MODEL=
+AI_DEFAULT_PROVIDER=aiservice
+```
+
+说明：
+- 该模式下 Gateway 将请求转发到 `jarvis-platform/ai-service`，由 ai-service 再做 provider 路由。
+- 建议配合 `AI_FALLBACK_ENABLED=true` + `AI_FALLBACK_PROVIDER=minimax/deepseek` 作为兜底。
+
+## 5.8 A04 同栈编排（Gateway + ai-service）
+
+如果你希望在同一份 `docker-compose.prod.yml` 内一起拉起 ai-service：
+
+```bash
+AI_AISERVICE_COMPOSE_ENABLED=true
+AI_DEFAULT_PROVIDER=aiservice
+AI_AISERVICE_ENABLED=true
+AI_AISERVICE_BASE_URL=http://aiservice:8000
+
+AISERVICE_IMAGE=ghcr.io/your-org/jarvis-ai-service:latest
+AISERVICE_PORT=18000
+AIS_MINIMAX_ENABLED=true
+AIS_MINIMAX_API_KEY=你的Key
+AIS_MINIMAX_MODEL=MiniMax-M2.5
+AIS_MINIMAX_API_KEY_HEADER=Authorization
+AIS_MINIMAX_API_KEY_PREFIX=Bearer
+```
+
+启动与验收：
+
+```bash
+./scripts/m11_prod_up.sh
+./scripts/a04_smoke.sh
+```
 
 ## 6. 请求时显式指定厂商
 

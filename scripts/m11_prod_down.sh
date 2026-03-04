@@ -18,16 +18,27 @@ if [[ ! -f "${ENV_FILE}" ]]; then
   ENV_FILE="${ROOT_DIR}/.env.prod.example"
 fi
 
+set -a
+. "${ENV_FILE}"
+set +a
+
+is_true() {
+  local value="${1:-}"
+  value="$(echo "${value}" | tr '[:upper:]' '[:lower:]')"
+  [[ "${value}" == "1" || "${value}" == "true" || "${value}" == "yes" || "${value}" == "on" ]]
+}
+
+COMPOSE_CMD=("${DC[@]}" \
+  -f "${ROOT_DIR}/docker-compose.prod.yml" \
+  --env-file "${ENV_FILE}")
+if is_true "${AI_AISERVICE_COMPOSE_ENABLED:-false}"; then
+  COMPOSE_CMD+=(--profile aiservice)
+fi
+
 if [[ "${1:-}" == "--volumes" ]]; then
   echo "[M11-DOWN] stopping stack and removing volumes ..."
-  "${DC[@]}" \
-    -f "${ROOT_DIR}/docker-compose.prod.yml" \
-    --env-file "${ENV_FILE}" \
-    down -v
+  "${COMPOSE_CMD[@]}" down -v
 else
   echo "[M11-DOWN] stopping stack ..."
-  "${DC[@]}" \
-    -f "${ROOT_DIR}/docker-compose.prod.yml" \
-    --env-file "${ENV_FILE}" \
-    down
+  "${COMPOSE_CMD[@]}" down
 fi

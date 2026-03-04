@@ -27,6 +27,11 @@
 - `docs/M18-Agent检索策略请求级覆盖说明.md`：请求级检索策略覆盖与 Agent 覆盖参数透传
 - `docs/M19-Agent检索反馈闭环与自动调优说明.md`：检索反馈采集、策略推荐与 autoTune 闭环
 - `docs/M20-Agent检索策略治理与来源审计说明.md`：workspace 策略模式治理（RECOMMEND/MANUAL/OFF）与 `overrideSource` 审计
+- `docs/A04-网关与AI服务统一编排交付说明.md`：A04（Gateway + ai-service 同栈编排与一键验收）
+- `docs/A05-AI服务镜像发布脚本交付说明.md`：A05（ai-service 镜像构建/发布脚本）
+- `docs/A06-阶段验收与检查点报告说明.md`：A06（阶段验收报告与关键节点留痕）
+- `docs/A07-阶段版本节点与回滚清单说明.md`：A07（阶段节点提交模板 + 回滚清单）
+- `docs/A08-预推送守卫与敏感信息扫描说明.md`：A08（预推送守卫 + 密钥样式扫描）
 - `docs/多厂商AI使用指南.md`：多厂商接入与路由使用指南
 - `docs/产品不足与增强路线.md`：当前产品不足与可增强路线
 - `docs/启动问题排查记录.md`：启动问题排查沉淀
@@ -49,7 +54,7 @@
 
 ## 多厂商 AI 重点特性（M4.6）
 
-- 支持多厂商统一接入：DeepSeek、Gemini、阿里云、腾讯云、GLM、MiniMax、local。
+- 支持多厂商统一接入：DeepSeek、Gemini、阿里云、腾讯云、GLM、MiniMax、local、ai-service（上游模型网关）。
 - 支持请求级路由：可通过 `provider/model` 动态切换目标厂商与模型。
 - 支持双协议适配：`OPENAI_COMPATIBLE` + `GEMINI`，同一网关统一对外接口。
 - 支持故障回退：主 provider 异常时可自动 fallback 到备 provider。
@@ -86,6 +91,15 @@
 | M18 | Agent 检索策略请求级覆盖（API/Agent override + 生效标记） | 1 天 | `completed` |
 | M19 | Agent 检索反馈闭环与自动调优（feedback -> recommendation -> autoTune） | 1 天 | `completed` |
 | M20 | Agent 检索策略治理与来源审计（workspace policy mode + overrideSource） | 1 天 | `completed` |
+
+## A 阶段（ai-service 子轨）
+
+- [x] A03：Gateway 接入 ai-service 上游 provider（`aiservice`）
+- [x] A04：Gateway + ai-service 统一生产编排与一键冒烟（可选 profile）
+- [x] A05：ai-service 镜像发布脚本（tag/latest/push）
+- [x] A06：阶段验收与检查点报告脚本（不自动发布）
+- [x] A07：阶段版本节点报告与提交模板（含回滚清单）
+- [x] A08：预推送守卫脚本（冒烟+敏感信息扫描+报告）
 
 ## M1 验收清单
 
@@ -323,6 +337,45 @@
 - [x] 新增 M20 冒烟脚本：`scripts/m20_smoke.sh`
 - [x] 补充单测：`KnowledgeRetrievalPolicyServiceTest`（策略模式与配置更新路径）
 - [x] 新增 M20 交付文档（`docs/M20-Agent检索策略治理与来源审计说明.md`）
+
+## A04 验收清单（已完成）
+
+- [x] 生产 compose 新增可选 `aiservice` 服务（`profiles: ["aiservice"]`）
+- [x] `.env.prod.example` 增加 A04 配置模板（`AI_AISERVICE_COMPOSE_ENABLED` + `AIS_*`）
+- [x] `m11_prod_up/down/smoke` 支持 A04 一键拉起/下线/校验
+- [x] 新增 A04 冒烟脚本：`scripts/a04_smoke.sh`
+- [x] 新增 A04 交付文档：`docs/A04-网关与AI服务统一编排交付说明.md`
+
+## A05 验收清单（已完成）
+
+- [x] 新增 ai-service 发布脚本：`scripts/a05_release_aiservice.sh`
+- [x] 支持 tag 构建 + 可选 latest 打标 + 可选 push
+- [x] 支持自定义 `AISERVICE_CONTEXT_DIR` / `AISERVICE_DOCKERFILE`
+- [x] 新增 A05 交付文档：`docs/A05-AI服务镜像发布脚本交付说明.md`
+
+## A06 验收清单（已完成）
+
+- [x] 新增检查点脚本：`scripts/a06_checkpoint.sh`
+- [x] 支持验收结果自动汇总为 Markdown 报告（`docs/reports/*.md`）
+- [x] 支持可选先拉起环境（`RUN_UP_FIRST=true`）
+- [x] 支持阶段性提交建议输出（不自动执行 git push）
+- [x] 新增 A06 交付文档：`docs/A06-阶段验收与检查点报告说明.md`
+
+## A07 验收清单（已完成）
+
+- [x] 新增阶段节点脚本：`scripts/a07_stage_node.sh`
+- [x] 自动生成阶段报告与 commit 模板（`docs/reports/stages/`）
+- [x] 报告内置回滚清单（路由回滚 + 镜像回滚）
+- [x] 不自动 commit/push/release，仅提供建议命令
+- [x] 新增 A07 交付文档：`docs/A07-阶段版本节点与回滚清单说明.md`
+
+## A08 验收清单（已完成）
+
+- [x] 新增预推送守卫脚本：`scripts/a08_prepush_guard.sh`
+- [x] 增加 `.env/.env.prod` 跟踪检查
+- [x] 增加密钥样式字符串扫描（预防误提交）
+- [x] 支持自动汇总 smoke + 安全检查报告（`docs/reports/a08_prepush_*.md`）
+- [x] 新增 A08 交付文档：`docs/A08-预推送守卫与敏感信息扫描说明.md`
 
 ## 当前目录结构（M1）
 

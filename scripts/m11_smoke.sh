@@ -12,6 +12,7 @@ fi
 
 FRONTEND_URL="${FRONTEND_URL:-http://localhost:${FRONTEND_PORT:-80}}"
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:${GATEWAY_PORT:-8080}}"
+AISERVICE_URL="${AISERVICE_URL:-http://localhost:${AISERVICE_PORT:-18000}}"
 
 echo "[M11-SMOKE] FRONTEND_URL=${FRONTEND_URL}"
 echo "[M11-SMOKE] GATEWAY_URL=${GATEWAY_URL}"
@@ -27,6 +28,17 @@ HTTP_CODE="$(curl -s -o /dev/null -w '%{http_code}' "${GATEWAY_URL}/api/v1/conve
 if [[ "${HTTP_CODE}" != "401" && "${HTTP_CODE}" != "403" ]]; then
   echo "[M11-SMOKE] expected 401/403, got ${HTTP_CODE}"
   exit 1
+fi
+
+is_true() {
+  local value="${1:-}"
+  value="$(echo "${value}" | tr '[:upper:]' '[:lower:]')"
+  [[ "${value}" == "1" || "${value}" == "true" || "${value}" == "yes" || "${value}" == "on" ]]
+}
+
+if is_true "${AI_AISERVICE_COMPOSE_ENABLED:-false}"; then
+  echo "[4/4] ai-service health"
+  curl -fsS "${AISERVICE_URL}/health" >/dev/null
 fi
 
 echo "[M11-SMOKE] SUCCESS"

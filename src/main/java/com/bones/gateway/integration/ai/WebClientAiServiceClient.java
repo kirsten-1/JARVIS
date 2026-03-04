@@ -829,9 +829,21 @@ public class WebClientAiServiceClient implements AiServiceClient {
         String content = textValue(root.path("content"));
         String model = textValue(root.path("model"));
         String finishReason = textValue(root.path("finishReason"));
-        Integer promptTokens = intValue(root.path("usage").path("prompt_tokens"));
-        Integer completionTokens = intValue(root.path("usage").path("completion_tokens"));
-        Integer totalTokens = intValue(root.path("usage").path("total_tokens"));
+        Integer promptTokens = firstNonNull(
+                intValue(root.path("usage").path("prompt_tokens")),
+                intValue(root.path("usage").path("promptTokens")),
+                intValue(root.path("promptTokens"))
+        );
+        Integer completionTokens = firstNonNull(
+                intValue(root.path("usage").path("completion_tokens")),
+                intValue(root.path("usage").path("completionTokens")),
+                intValue(root.path("completionTokens"))
+        );
+        Integer totalTokens = firstNonNull(
+                intValue(root.path("usage").path("total_tokens")),
+                intValue(root.path("usage").path("totalTokens")),
+                intValue(root.path("totalTokens"))
+        );
         List<AiToolCall> toolCalls = List.of();
         if (totalTokens == null && promptTokens != null && completionTokens != null) {
             totalTokens = promptTokens + completionTokens;
@@ -842,7 +854,11 @@ public class WebClientAiServiceClient implements AiServiceClient {
                 : null;
 
         if (firstChoice != null) {
-            finishReason = textValue(firstChoice.path("finish_reason"));
+            finishReason = firstNonBlank(
+                    textValue(firstChoice.path("finish_reason")),
+                    textValue(firstChoice.path("finishReason")),
+                    finishReason
+            );
             content = textValue(firstChoice.path("message").path("content"));
             if (!StringUtils.hasText(content)) {
                 content = textValue(firstChoice.path("text"));
@@ -1221,12 +1237,21 @@ public class WebClientAiServiceClient implements AiServiceClient {
     private String extractOpenAiUsageToken(JsonNode root) {
         JsonNode usageNode = root.path("usage");
         if (usageNode.isMissingNode() || usageNode.isNull()) {
-            return null;
+            usageNode = root;
         }
 
-        Integer promptTokens = intValue(usageNode.path("prompt_tokens"));
-        Integer completionTokens = intValue(usageNode.path("completion_tokens"));
-        Integer totalTokens = intValue(usageNode.path("total_tokens"));
+        Integer promptTokens = firstNonNull(
+                intValue(usageNode.path("prompt_tokens")),
+                intValue(usageNode.path("promptTokens"))
+        );
+        Integer completionTokens = firstNonNull(
+                intValue(usageNode.path("completion_tokens")),
+                intValue(usageNode.path("completionTokens"))
+        );
+        Integer totalTokens = firstNonNull(
+                intValue(usageNode.path("total_tokens")),
+                intValue(usageNode.path("totalTokens"))
+        );
         if (totalTokens == null && promptTokens != null && completionTokens != null) {
             totalTokens = promptTokens + completionTokens;
         }
@@ -1349,6 +1374,31 @@ public class WebClientAiServiceClient implements AiServiceClient {
         } catch (NumberFormatException ignored) {
             return null;
         }
+    }
+
+    @SafeVarargs
+    private final <T> T firstNonNull(T... values) {
+        if (values == null) {
+            return null;
+        }
+        for (T value : values) {
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (StringUtils.hasText(value)) {
+                return value;
+            }
+        }
+        return null;
     }
 
     private String urlEncode(String text) {
