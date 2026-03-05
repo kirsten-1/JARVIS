@@ -16,3 +16,11 @@ frontend/node_modules/
 
 # Logs
 *.log
+
+# Python artifacts
+__pycache__/
+*.pyc
+
+# B02 knowledge-workflow-service runtime files
+knowledge-workflow-service/.venv/
+knowledge-workflow-service/data/*.jsonl

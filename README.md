@@ -44,6 +44,9 @@
 - `docs/A18-候选发布证据包归档说明.md`：A18（候选发布证据包打包归档）
 - `docs/A19-证据包审计与索引说明.md`：A19（证据包完整性审计与索引台账）
 - `docs/A20-收官决策与交付快照说明.md`：A20（收官 go/hold 决策与交付快照）
+- `docs/B01-知识与工作流中台子项目规划.md`：B01（下一子项目：RAG + Workflow 中台规划）
+- `docs/B02-文档解析分块入库MVP交付说明.md`：B02（知识中台 ingest 解析/分块/入库 MVP）
+- `docs/B03-混合检索与RerankMVP交付说明.md`：B03（BM25 + dense + rerank 检索链路）
 - `docs/多厂商AI使用指南.md`：多厂商接入与路由使用指南
 - `docs/产品不足与增强路线.md`：当前产品不足与可增强路线
 - `docs/启动问题排查记录.md`：启动问题排查沉淀
@@ -124,6 +127,17 @@
 - [x] A18：候选发布证据包（A08~A17 报告打包归档，不执行 release）
 - [x] A19：证据包审计与索引（完整性校验 + bundle index）
 - [x] A20：收官决策与交付快照（go/hold 决策 + closeout package）
+
+## B 阶段（Knowledge & Workflow 子轨）
+
+- [x] B01：知识与工作流中台子项目规划（范围、目标、里程碑、风险控制）
+- [x] B02：文档解析 + 分块 + 入库管线 MVP（knowledge-workflow-service）
+- [x] B03：混合检索与 rerank MVP
+- [ ] B04：RAG 评测集与离线评测基线
+- [ ] B05：Workflow DAG 执行引擎 MVP
+- [ ] B06：人工审核/Webhook/模板流程首批
+- [ ] B07：gateway/agent 端到端集成
+- [ ] B08：质量/性能/成本门禁收官
 
 ## M1 验收清单
 
@@ -502,6 +516,33 @@
 - [x] 生成收官归档包：`docs/reports/bundles/a20_closeout_package_*.tar.gz`
 - [x] 新增 A20 CI workflow：`.github/workflows/a20-final-closeout.yml`
 - [x] 新增 A20 交付文档：`docs/A20-收官决策与交付快照说明.md`
+
+## B01 验收清单（已完成）
+
+- [x] 定义下一子项目范围（RAG 中台 + Workflow 中台）
+- [x] 固化目标指标（质量/成功率/性能/成本）
+- [x] 输出 B02~B08 里程碑与本周可执行清单
+- [x] 固化风险与控制策略
+- [x] 新增 B01 规划文档：`docs/B01-知识与工作流中台子项目规划.md`
+
+## B02 验收清单（已完成）
+
+- [x] 新建 `knowledge-workflow-service` 子目录与 FastAPI 最小工程骨架
+- [x] 实现文档解析（text/markdown/html）与可配置分块（chunk size/overlap）
+- [x] 实现入库链路（document/chunks JSONL 持久化）
+- [x] 提供基础检索接口（词法检索）
+- [x] 新增 B02 冒烟脚本：`knowledge-workflow-service/scripts/b02_smoke.sh` + `scripts/b02_smoke.sh`
+- [x] 新增 B02 交付文档：`docs/B02-文档解析分块入库MVP交付说明.md`
+
+## B03 验收清单（已完成）
+
+- [x] 实现 BM25 检索能力（`search_mode=bm25`）
+- [x] 实现 dense 近似检索能力（`search_mode=dense`）
+- [x] 实现 hybrid 融合检索（`search_mode=hybrid`，权重可配置）
+- [x] 实现 hybrid rerank 重排（`rerank=true`）
+- [x] 扩展 search 响应调试字段（strategy、scores、candidates）
+- [x] 新增 B03 冒烟脚本：`knowledge-workflow-service/scripts/b03_smoke.sh` + `scripts/b03_smoke.sh`
+- [x] 新增 B03 交付文档：`docs/B03-混合检索与RerankMVP交付说明.md`
 
 ## 当前目录结构（M1）
 
