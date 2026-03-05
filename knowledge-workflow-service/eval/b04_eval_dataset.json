@@ -1,0 +1,128 @@
+{
+  "version": "b04-v1",
+  "description": "Jarvis knowledge retrieval offline evaluation set for B04 baseline.",
+  "documents": [
+    {
+      "id": "doc_rag",
+      "title": "RAG Hybrid Retrieval",
+      "source_type": "markdown",
+      "content": "# RAG\n混合检索采用 BM25 与向量召回，再经过 rerank 重排序，目标是提升准确率与召回率。"
+    },
+    {
+      "id": "doc_workflow",
+      "title": "Workflow DAG Engine",
+      "source_type": "markdown",
+      "content": "# Workflow\nDAG 引擎支持节点重试、超时控制、人工审批、Webhook 回调与幂等执行。"
+    },
+    {
+      "id": "doc_observability",
+      "title": "Observability and SLO",
+      "source_type": "markdown",
+      "content": "# Observability\n通过 Prometheus + Grafana 追踪请求量、错误率、TTFT 与 Token 成本，并配置告警规则。"
+    },
+    {
+      "id": "doc_gateway",
+      "title": "Gateway Routing",
+      "source_type": "markdown",
+      "content": "# Gateway\nSpring Boot 网关统一接入多厂商模型，支持 provider 路由、fallback 降级与鉴权审计。"
+    },
+    {
+      "id": "doc_memory",
+      "title": "Memory Strategy",
+      "source_type": "markdown",
+      "content": "# Memory\n会话记忆采用短期上下文 + 长期摘要，支持窗口压缩与关键信息保留。"
+    },
+    {
+      "id": "doc_security",
+      "title": "Security and Governance",
+      "source_type": "markdown",
+      "content": "# Security\n平台基于 JWT + RBAC，并结合限流、配额与审计日志保障安全治理。"
+    }
+  ],
+  "queries": [
+    {
+      "id": "q01",
+      "query": "什么是 BM25 和向量混合检索？",
+      "expected_doc_ids": [
+        "doc_rag"
+      ]
+    },
+    {
+      "id": "q02",
+      "query": "rerank 重排序在检索链路中做什么？",
+      "expected_doc_ids": [
+        "doc_rag"
+      ]
+    },
+    {
+      "id": "q03",
+      "query": "DAG 工作流如何实现人工审批和 webhook 回调？",
+      "expected_doc_ids": [
+        "doc_workflow"
+      ]
+    },
+    {
+      "id": "q04",
+      "query": "工作流里的节点重试和幂等执行怎么做？",
+      "expected_doc_ids": [
+        "doc_workflow"
+      ]
+    },
+    {
+      "id": "q05",
+      "query": "如何用 Prometheus 和 Grafana 做可观测？",
+      "expected_doc_ids": [
+        "doc_observability"
+      ]
+    },
+    {
+      "id": "q06",
+      "query": "怎么监控 TTFT 和 token 成本？",
+      "expected_doc_ids": [
+        "doc_observability"
+      ]
+    },
+    {
+      "id": "q07",
+      "query": "Spring Boot 网关怎么做 provider 路由和 fallback？",
+      "expected_doc_ids": [
+        "doc_gateway"
+      ]
+    },
+    {
+      "id": "q08",
+      "query": "多厂商模型统一接入和鉴权审计属于哪一块？",
+      "expected_doc_ids": [
+        "doc_gateway"
+      ]
+    },
+    {
+      "id": "q09",
+      "query": "会话记忆里短期上下文和长期摘要如何配合？",
+      "expected_doc_ids": [
+        "doc_memory"
+      ]
+    },
+    {
+      "id": "q10",
+      "query": "上下文窗口压缩与关键信息保留是哪个模块？",
+      "expected_doc_ids": [
+        "doc_memory"
+      ]
+    },
+    {
+      "id": "q11",
+      "query": "JWT 和 RBAC 如何配合限流配额做安全治理？",
+      "expected_doc_ids": [
+        "doc_security"
+      ]
+    },
+    {
+      "id": "q12",
+      "query": "审计日志与权限控制应该看哪部分设计？",
+      "expected_doc_ids": [
+        "doc_security"
+      ]
+    }
+  ]
+}

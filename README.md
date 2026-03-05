@@ -47,6 +47,7 @@
 - `docs/B01-知识与工作流中台子项目规划.md`：B01（下一子项目：RAG + Workflow 中台规划）
 - `docs/B02-文档解析分块入库MVP交付说明.md`：B02（知识中台 ingest 解析/分块/入库 MVP）
 - `docs/B03-混合检索与RerankMVP交付说明.md`：B03（BM25 + dense + rerank 检索链路）
+- `docs/B04-RAG评测集与离线评测基线说明.md`：B04（固定评测集 + 离线评测基线）
 - `docs/多厂商AI使用指南.md`：多厂商接入与路由使用指南
 - `docs/产品不足与增强路线.md`：当前产品不足与可增强路线
 - `docs/启动问题排查记录.md`：启动问题排查沉淀
@@ -133,7 +134,7 @@
 - [x] B01：知识与工作流中台子项目规划（范围、目标、里程碑、风险控制）
 - [x] B02：文档解析 + 分块 + 入库管线 MVP（knowledge-workflow-service）
 - [x] B03：混合检索与 rerank MVP
-- [ ] B04：RAG 评测集与离线评测基线
+- [x] B04：RAG 评测集与离线评测基线
 - [ ] B05：Workflow DAG 执行引擎 MVP
 - [ ] B06：人工审核/Webhook/模板流程首批
 - [ ] B07：gateway/agent 端到端集成
@@ -543,6 +544,15 @@
 - [x] 扩展 search 响应调试字段（strategy、scores、candidates）
 - [x] 新增 B03 冒烟脚本：`knowledge-workflow-service/scripts/b03_smoke.sh` + `scripts/b03_smoke.sh`
 - [x] 新增 B03 交付文档：`docs/B03-混合检索与RerankMVP交付说明.md`
+
+## B04 验收清单（已完成）
+
+- [x] 新增固定评测集：`knowledge-workflow-service/eval/b04_eval_dataset.json`
+- [x] 实现离线评测脚本（ingest + search + hit_rate/mrr/recall/latency）
+- [x] 支持 gate 阈值与 strict 模式（`TARGET_HIT_RATE`、`TARGET_MRR`、`STRICT`）
+- [x] 产出 markdown/json 双报告到 `docs/reports/`
+- [x] 新增 B04 执行脚本：`knowledge-workflow-service/scripts/b04_eval.sh` + `scripts/b04_eval.sh`
+- [x] 新增 B04 交付文档：`docs/B04-RAG评测集与离线评测基线说明.md`
 
 ## 当前目录结构（M1）
 
