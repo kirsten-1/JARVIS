@@ -1,6 +1,6 @@
-# knowledge-workflow-service (B02/B04 MVP)
+# knowledge-workflow-service (B02/B05 MVP)
 
-B02/B04 最小闭环：文档解析 + 分块 + 入库 + 混合检索（BM25 + dense）+ rerank + 离线评测。
+B02/B05 最小闭环：文档解析 + 分块 + 入库 + 混合检索（BM25 + dense）+ rerank + 离线评测 + Workflow DAG 执行。
 
 ## 提供接口
 
@@ -9,6 +9,11 @@ B02/B04 最小闭环：文档解析 + 分块 + 入库 + 混合检索（BM25 + de
 - `GET /api/v1/knowledge/documents`
 - `GET /api/v1/knowledge/documents/{documentId}/chunks`
 - `POST /api/v1/knowledge/search`
+- `POST /api/v1/workflows`
+- `GET /api/v1/workflows`
+- `GET /api/v1/workflows/{workflowId}`
+- `POST /api/v1/workflows/{workflowId}/runs`
+- `GET /api/v1/workflow-runs/{runId}`
 
 `POST /api/v1/knowledge/search` 支持参数：
 
@@ -34,6 +39,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8091 --reload
 ./scripts/b02_smoke.sh
 ./scripts/b03_smoke.sh
 ./scripts/b04_eval.sh
+./scripts/b05_smoke.sh
 ```
 
 ## B04 离线评测
@@ -58,4 +64,11 @@ MVP 使用本地 JSONL 文件：
 - `data/documents.jsonl`
 - `data/chunks.jsonl`
 
-后续 B05 进入 Workflow DAG 执行引擎 MVP。
+后续 B06 进入人工审核/Webhook/模板流程首批能力。
+
+## B05 Workflow 执行能力
+
+- 支持节点类型：`start` / `task` / `condition` / `end`
+- 支持 DAG 校验：单 start、无环、节点可达性、边引用合法性
+- 支持执行器能力：条件分支、节点重试、节点超时判定、run 幂等（idempotency_key）
+- 支持运行记录查询：`GET /api/v1/workflow-runs/{runId}`

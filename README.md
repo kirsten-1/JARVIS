@@ -48,6 +48,7 @@
 - `docs/B02-文档解析分块入库MVP交付说明.md`：B02（知识中台 ingest 解析/分块/入库 MVP）
 - `docs/B03-混合检索与RerankMVP交付说明.md`：B03（BM25 + dense + rerank 检索链路）
 - `docs/B04-RAG评测集与离线评测基线说明.md`：B04（固定评测集 + 离线评测基线）
+- `docs/B05-WorkflowDAG执行引擎MVP说明.md`：B05（Workflow 定义/执行/幂等/查询 MVP）
 - `docs/多厂商AI使用指南.md`：多厂商接入与路由使用指南
 - `docs/产品不足与增强路线.md`：当前产品不足与可增强路线
 - `docs/启动问题排查记录.md`：启动问题排查沉淀
@@ -135,7 +136,7 @@
 - [x] B02：文档解析 + 分块 + 入库管线 MVP（knowledge-workflow-service）
 - [x] B03：混合检索与 rerank MVP
 - [x] B04：RAG 评测集与离线评测基线
-- [ ] B05：Workflow DAG 执行引擎 MVP
+- [x] B05：Workflow DAG 执行引擎 MVP
 - [ ] B06：人工审核/Webhook/模板流程首批
 - [ ] B07：gateway/agent 端到端集成
 - [ ] B08：质量/性能/成本门禁收官
@@ -553,6 +554,15 @@
 - [x] 产出 markdown/json 双报告到 `docs/reports/`
 - [x] 新增 B04 执行脚本：`knowledge-workflow-service/scripts/b04_eval.sh` + `scripts/b04_eval.sh`
 - [x] 新增 B04 交付文档：`docs/B04-RAG评测集与离线评测基线说明.md`
+
+## B05 验收清单（已完成）
+
+- [x] 新增 Workflow API：create/list/detail/run/get-run
+- [x] 实现 Workflow DAG 校验（单 start、无环、可达性、边合法）
+- [x] 实现执行器能力（条件分支、节点重试、节点超时判定）
+- [x] 实现运行幂等（`idempotency_key`）
+- [x] 新增 B05 冒烟脚本：`knowledge-workflow-service/scripts/b05_smoke.sh` + `scripts/b05_smoke.sh`
+- [x] 新增 B05 交付文档：`docs/B05-WorkflowDAG执行引擎MVP说明.md`
 
 ## 当前目录结构（M1）
 

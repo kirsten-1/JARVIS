@@ -100,3 +100,96 @@ class HealthResponse(ApiModel):
     status: str
     service: str
     env: str
+
+
+class WorkflowNodeDefinition(ApiModel):
+    node_id: str = Field(min_length=1)
+    node_type: str = Field(min_length=1)
+    config: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("node_type")
+    @classmethod
+    def validate_node_type(cls, value: str) -> str:
+        allowed = {"start", "task", "condition", "end"}
+        normalized = value.lower().strip()
+        if normalized not in allowed:
+            raise ValueError(f"node_type must be one of {sorted(allowed)}")
+        return normalized
+
+
+class WorkflowEdgeDefinition(ApiModel):
+    from_node: str = Field(min_length=1)
+    to_node: str = Field(min_length=1)
+    condition: Optional[str] = None
+
+
+class WorkflowCreateRequest(ApiModel):
+    name: str = Field(min_length=1)
+    description: Optional[str] = None
+    nodes: list[WorkflowNodeDefinition] = Field(min_length=1)
+    edges: list[WorkflowEdgeDefinition] = Field(min_length=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowSummary(ApiModel):
+    workflow_id: str
+    name: str
+    description: Optional[str] = None
+    node_count: int
+    edge_count: int
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+
+class WorkflowDetail(ApiModel):
+    workflow_id: str
+    name: str
+    description: Optional[str] = None
+    nodes: list[WorkflowNodeDefinition]
+    edges: list[WorkflowEdgeDefinition]
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+
+class WorkflowListResponse(ApiModel):
+    total: int
+    items: list[WorkflowSummary]
+
+
+class WorkflowCreateResponse(ApiModel):
+    workflow_id: str
+    name: str
+    created_at: datetime
+
+
+class WorkflowRunRequest(ApiModel):
+    input: dict[str, Any] = Field(default_factory=dict)
+    idempotency_key: Optional[str] = None
+    max_steps: int = Field(default=50, ge=1, le=500)
+
+
+class WorkflowRunStep(ApiModel):
+    index: int
+    node_id: str
+    node_type: str
+    status: str
+    attempt: int
+    duration_ms: int
+    input: dict[str, Any] = Field(default_factory=dict)
+    output: dict[str, Any] = Field(default_factory=dict)
+    error: Optional[str] = None
+
+
+class WorkflowRunResponse(ApiModel):
+    run_id: str
+    workflow_id: str
+    status: str
+    idempotency_key: Optional[str] = None
+    idempotent_hit: bool = False
+    created_at: Optional[datetime] = None
+    started_at: datetime
+    completed_at: datetime
+    duration_ms: int
+    steps: list[WorkflowRunStep]
+    final_context: dict[str, Any] = Field(default_factory=dict)
+    error: Optional[str] = None
