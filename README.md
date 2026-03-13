@@ -49,6 +49,7 @@
 - `docs/B03-混合检索与RerankMVP交付说明.md`：B03（BM25 + dense + rerank 检索链路）
 - `docs/B04-RAG评测集与离线评测基线说明.md`：B04（固定评测集 + 离线评测基线）
 - `docs/B05-WorkflowDAG执行引擎MVP说明.md`：B05（Workflow 定义/执行/幂等/查询 MVP）
+- `docs/B06-人工审核Webhook与模板流程首批说明.md`：B06（approval/webhook/template 首批）
 - `docs/多厂商AI使用指南.md`：多厂商接入与路由使用指南
 - `docs/产品不足与增强路线.md`：当前产品不足与可增强路线
 - `docs/启动问题排查记录.md`：启动问题排查沉淀
@@ -137,7 +138,7 @@
 - [x] B03：混合检索与 rerank MVP
 - [x] B04：RAG 评测集与离线评测基线
 - [x] B05：Workflow DAG 执行引擎 MVP
-- [ ] B06：人工审核/Webhook/模板流程首批
+- [x] B06：人工审核/Webhook/模板流程首批
 - [ ] B07：gateway/agent 端到端集成
 - [ ] B08：质量/性能/成本门禁收官
 
@@ -563,6 +564,15 @@
 - [x] 实现运行幂等（`idempotency_key`）
 - [x] 新增 B05 冒烟脚本：`knowledge-workflow-service/scripts/b05_smoke.sh` + `scripts/b05_smoke.sh`
 - [x] 新增 B05 交付文档：`docs/B05-WorkflowDAG执行引擎MVP说明.md`
+
+## B06 验收清单（已完成）
+
+- [x] 新增 `approval` 节点（人工审核决策路由）
+- [x] 新增 `webhook` 节点（dry-run / 真实回调）
+- [x] 新增模板 API（list + instantiate）
+- [x] 交付首批模板流程（content approval / incident escalation）
+- [x] 新增 B06 冒烟脚本：`knowledge-workflow-service/scripts/b06_smoke.sh` + `scripts/b06_smoke.sh`
+- [x] 新增 B06 交付文档：`docs/B06-人工审核Webhook与模板流程首批说明.md`
 
 ## 当前目录结构（M1）
 

@@ -8,8 +8,8 @@ from app.routers.workflow import router as workflow_router
 
 app = FastAPI(
     title="jarvis-knowledge-workflow-service",
-    version="0.2.0",
-    description="B05 MVP: knowledge ingestion/retrieval and workflow DAG execution baseline.",
+    version="0.3.0",
+    description="B06 MVP: knowledge retrieval + workflow DAG with approval/webhook/template flows.",
 )
 
 

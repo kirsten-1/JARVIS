@@ -1,6 +1,9 @@
 from datetime import datetime, timezone
+import json
 import time
 from typing import Any, Optional
+import urllib.error
+import urllib.request
 
 
 class WorkflowValidationError(ValueError):
@@ -59,6 +62,14 @@ def _resolve_value(spec: Any, context: dict) -> Any:
     return spec
 
 
+def _resolve_object(spec: Any, context: dict) -> Any:
+    if isinstance(spec, dict):
+        return {key: _resolve_object(value, context) for key, value in spec.items()}
+    if isinstance(spec, list):
+        return [_resolve_object(item, context) for item in spec]
+    return _resolve_value(spec, context)
+
+
 def _render_template(template: str, context: dict) -> str:
     rendered = template
     token_map = {
@@ -68,6 +79,21 @@ def _render_template(template: str, context: dict) -> str:
     for token, value in token_map.items():
         rendered = rendered.replace(token, value)
     return rendered
+
+
+def _to_bool(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "approved", "allow"}:
+        return True
+    if text in {"0", "false", "no", "rejected", "deny"}:
+        return False
+    return default
 
 
 def _evaluate_condition(operator: str, left: Any, right: Any) -> bool:
@@ -197,10 +223,86 @@ def _execute_task(config: dict, context: dict) -> dict:
     raise WorkflowExecutionError(f"unsupported task op: {op}")
 
 
+def _execute_approval(config: dict, context: dict) -> tuple[dict, str]:
+    decision_ref = str(config.get("decision_ref", "$input.review.approved"))
+    reviewer_ref = str(config.get("reviewer_ref", "$input.review.reviewer"))
+    comment_ref = str(config.get("comment_ref", "$input.review.comment"))
+    require_explicit = _to_bool(config.get("require_explicit", True), default=True)
+
+    raw_decision = _resolve_value(decision_ref, context)
+    reviewer = _resolve_value(reviewer_ref, context)
+    comment = _resolve_value(comment_ref, context)
+
+    if raw_decision is None and require_explicit:
+        raise WorkflowExecutionError("approval decision missing")
+
+    approved = _to_bool(raw_decision, default=False)
+    route = "approved" if approved else "rejected"
+    output = {
+        "approved": approved,
+        "reviewer": reviewer,
+        "comment": comment,
+        "decision_ref": decision_ref,
+        "route": route,
+    }
+
+    output_key = str(config.get("output_key", "approval.last"))
+    path = [part for part in output_key.split(".") if part]
+    _set_nested(context, path, output)
+    return output, route
+
+
+def _execute_webhook(config: dict, context: dict) -> dict:
+    method = str(config.get("method", "POST")).strip().upper()
+    url = str(_resolve_value(config.get("url"), context) or "").strip()
+    if not url:
+        raise WorkflowExecutionError("webhook url is empty")
+
+    headers = _resolve_object(config.get("headers", {}), context)
+    payload_obj = _resolve_object(config.get("payload", {}), context)
+    dry_run = _to_bool(config.get("dry_run", False), default=False)
+    request_timeout_ms = int(config.get("request_timeout_ms", 3000))
+
+    if not isinstance(headers, dict):
+        raise WorkflowExecutionError("webhook headers must be an object")
+
+    if dry_run:
+        output = {
+            "dry_run": True,
+            "method": method,
+            "url": url,
+            "headers": headers,
+            "payload": payload_obj,
+        }
+    else:
+        data = json.dumps(payload_obj, ensure_ascii=False).encode("utf-8")
+        req_headers = {"Content-Type": "application/json"}
+        for key, value in headers.items():
+            req_headers[str(key)] = str(value)
+        req = urllib.request.Request(url=url, data=data, method=method, headers=req_headers)
+        try:
+            with urllib.request.urlopen(req, timeout=max(request_timeout_ms, 1) / 1000.0) as resp:
+                raw = resp.read().decode("utf-8")
+                output = {
+                    "dry_run": False,
+                    "method": method,
+                    "url": url,
+                    "status_code": int(resp.getcode() or 0),
+                    "response_body": raw[:2000],
+                }
+        except urllib.error.URLError as exc:
+            raise WorkflowExecutionError(f"webhook request failed: {exc}") from exc
+
+    output_key = str(config.get("output_key", "webhook.last"))
+    path = [part for part in output_key.split(".") if part]
+    _set_nested(context, path, output)
+    return output
+
+
 def _select_next_node(current_node: dict, outgoing_edges: list[dict], route: Optional[str]) -> Optional[str]:
     if not outgoing_edges:
         return None
-    if current_node.get("node_type") == "condition":
+    if current_node.get("node_type") in {"condition", "approval"}:
         normalized_route = (route or "").strip().lower()
         for edge in outgoing_edges:
             edge_condition = str(edge.get("condition") or "").strip().lower()
@@ -260,6 +362,10 @@ def execute_workflow(workflow: dict, run_id: str, run_input: dict, max_steps: in
                     passed = _evaluate_condition(operator=operator, left=left, right=right)
                     route = "true" if passed else "false"
                     output = {"operator": operator, "left": left, "right": right, "passed": passed}
+                elif node_type == "approval":
+                    output, route = _execute_approval(config=config, context=context)
+                elif node_type == "webhook":
+                    output = _execute_webhook(config=config, context=context)
                 elif node_type == "end":
                     output = {"message": "end node reached"}
                 else:

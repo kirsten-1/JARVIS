@@ -12,9 +12,14 @@ from app.models.schemas import (
     WorkflowRunRequest,
     WorkflowRunResponse,
     WorkflowSummary,
+    WorkflowTemplateInstantiateRequest,
+    WorkflowTemplateInstantiateResponse,
+    WorkflowTemplateListResponse,
+    WorkflowTemplateSummary,
 )
 from app.services.workflow_engine import WorkflowValidationError, execute_workflow, validate_workflow_definition
 from app.services.workflow_store import WorkflowStore
+from app.services.workflow_templates import instantiate_template, list_templates
 
 
 router = APIRouter()
@@ -120,3 +125,46 @@ def get_workflow_run(run_id: str) -> WorkflowRunResponse:
     if run is None:
         raise HTTPException(status_code=404, detail="workflow run not found")
     return WorkflowRunResponse.model_validate(run)
+
+
+@router.get("/workflow-templates", response_model=WorkflowTemplateListResponse)
+def get_workflow_templates() -> WorkflowTemplateListResponse:
+    items = [WorkflowTemplateSummary.model_validate(item) for item in list_templates()]
+    return WorkflowTemplateListResponse(total=len(items), items=items)
+
+
+@router.post(
+    "/workflow-templates/{template_id}/instantiate",
+    response_model=WorkflowTemplateInstantiateResponse,
+)
+def instantiate_workflow_template(
+    template_id: str,
+    request: WorkflowTemplateInstantiateRequest,
+) -> WorkflowTemplateInstantiateResponse:
+    template = instantiate_template(
+        template_id=template_id,
+        name=request.name,
+        metadata=request.metadata,
+        overrides=request.overrides,
+    )
+    if template is None:
+        raise HTTPException(status_code=404, detail="workflow template not found")
+
+    try:
+        validate_workflow_definition(nodes=template["nodes"], edges=template["edges"])
+    except WorkflowValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    workflow = store.create_workflow(
+        name=template["name"],
+        description=template.get("description"),
+        nodes=template["nodes"],
+        edges=template["edges"],
+        metadata=template.get("metadata", {}),
+    )
+    return WorkflowTemplateInstantiateResponse(
+        template_id=template["template_id"],
+        workflow_id=workflow["workflow_id"],
+        name=workflow["name"],
+        created_at=workflow["created_at"],
+    )

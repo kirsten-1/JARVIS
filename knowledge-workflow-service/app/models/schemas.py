@@ -110,7 +110,7 @@ class WorkflowNodeDefinition(ApiModel):
     @field_validator("node_type")
     @classmethod
     def validate_node_type(cls, value: str) -> str:
-        allowed = {"start", "task", "condition", "end"}
+        allowed = {"start", "task", "condition", "approval", "webhook", "end"}
         normalized = value.lower().strip()
         if normalized not in allowed:
             raise ValueError(f"node_type must be one of {sorted(allowed)}")
@@ -193,3 +193,30 @@ class WorkflowRunResponse(ApiModel):
     steps: list[WorkflowRunStep]
     final_context: dict[str, Any] = Field(default_factory=dict)
     error: Optional[str] = None
+
+
+class WorkflowTemplateSummary(ApiModel):
+    template_id: str
+    name: str
+    description: str
+    category: str
+    node_count: int
+    edge_count: int
+
+
+class WorkflowTemplateListResponse(ApiModel):
+    total: int
+    items: list[WorkflowTemplateSummary]
+
+
+class WorkflowTemplateInstantiateRequest(ApiModel):
+    name: Optional[str] = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    overrides: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowTemplateInstantiateResponse(ApiModel):
+    template_id: str
+    workflow_id: str
+    name: str
+    created_at: datetime
